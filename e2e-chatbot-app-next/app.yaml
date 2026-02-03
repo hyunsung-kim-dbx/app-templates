@@ -1,6 +1,15 @@
 command: ["npm", "run", "start"]
 runtime: nodejs20
 
+# OAuth scopes required for OBO (On-Behalf-Of) authentication
+# These scopes allow the app to call APIs using the user's credentials
+user_api_scopes:
+  - serving.serving-endpoints  # Required to call serving endpoints
+  - sql                        # Optional: for SQL operations
+  - catalog.catalogs:read      # Optional: for catalog access
+  - catalog.schemas:read       # Optional: for schema access
+  - catalog.tables:read        # Optional: for table access
+
 env:
   - name: DATABRICKS_SERVING_ENDPOINT
     valueFrom: serving-endpoint
