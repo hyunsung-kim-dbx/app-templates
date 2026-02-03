@@ -38,7 +38,12 @@ export async function authMiddleware(
     if (userAccessToken) {
       req.userAccessToken = userAccessToken;
       req.userEmail = userEmail;
-      console.log('[Auth] User access token received for OBO operations');
+      const tokenPreview = userAccessToken.length > 20
+        ? `${userAccessToken.substring(0, 10)}...${userAccessToken.substring(userAccessToken.length - 10)}`
+        : '***SHORT***';
+      console.log(`[Auth] User access token received for OBO operations - Token: ${tokenPreview}, Length: ${userAccessToken.length}, Email: ${userEmail}`);
+    } else {
+      console.log('[Auth] No X-Forwarded-Access-Token header found (not using OBO)');
     }
 
     next();

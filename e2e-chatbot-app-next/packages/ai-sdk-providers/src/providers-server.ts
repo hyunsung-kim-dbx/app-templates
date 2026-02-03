@@ -32,13 +32,14 @@ async function getServicePrincipalToken(): Promise<string> {
 // Use centralized authentication - only on server side
 async function getProviderToken(): Promise<string> {
   // PRIORITY 1: Check for user's access token from request context (OBO)
+  // CRITICAL: Must use user token for MAS/Genie to access user's tables
   const requestCtx = getRequestContext();
   if (requestCtx?.userAccessToken) {
     console.log('[OBO] Using user access token from request context');
     return requestCtx.userAccessToken;
   }
 
-  // PRIORITY 2: Fall back to service principal token
+  // PRIORITY 2: Fall back to service principal token (local dev only)
   return getServicePrincipalToken();
 }
 
@@ -261,6 +262,17 @@ const provider = createDatabricksProvider({
   fetch: async (...[input, init]: Parameters<typeof fetch>) => {
     // Always get fresh token for each request (will use cache if valid)
     const currentToken = await getProviderToken();
+
+    // DEBUG: Log token info (first/last 10 chars only for security)
+    if (currentToken) {
+      const tokenPreview = currentToken.length > 20
+        ? `${currentToken.substring(0, 10)}...${currentToken.substring(currentToken.length - 10)}`
+        : '***SHORT TOKEN***';
+      console.log(`[Token Debug] Using token: ${tokenPreview}, length: ${currentToken.length}`);
+    } else {
+      console.error('[Token Debug] WARNING: No token available!');
+    }
+
     const headers = new Headers(init?.headers);
     headers.set('Authorization', `Bearer ${currentToken}`);
 
