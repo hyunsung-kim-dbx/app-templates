@@ -32,8 +32,9 @@ export async function authMiddleware(
 
     // Extract user's access token and email for OBO operations
     // These headers are provided by Databricks Apps when OBO is enabled
-    const userAccessToken = req.headers['x-forwarded-access-token'] as string | undefined;
-    const userEmail = req.headers['x-forwarded-email'] as string | undefined;
+    // Using req.header() as recommended by Express docs (case-insensitive)
+    const userAccessToken = req.header('x-forwarded-access-token');
+    const userEmail = req.header('x-forwarded-email');
 
     if (userAccessToken) {
       req.userAccessToken = userAccessToken;
