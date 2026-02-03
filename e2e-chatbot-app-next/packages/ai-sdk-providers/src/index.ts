@@ -1,2 +1,8 @@
 export * from './providers-server';
-export { shouldInjectContextForEndpoint } from './request-context';
+export {
+  shouldInjectContextForEndpoint,
+  setRequestContext,
+  getRequestContext,
+  runWithContext,
+  type RequestContext,
+} from './request-context';

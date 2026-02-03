@@ -10,7 +10,7 @@ import {
 } from '@chat-template/auth';
 import { createDatabricksProvider } from '@databricks/ai-sdk-provider';
 import { extractReasoningMiddleware, wrapLanguageModel } from 'ai';
-import { shouldInjectContextForEndpoint } from './request-context';
+import { shouldInjectContextForEndpoint, getRequestContext } from './request-context';
 
 // Header keys for passing context through streamText headers
 export const CONTEXT_HEADER_CONVERSATION_ID = 'x-databricks-conversation-id';
@@ -18,13 +18,21 @@ export const CONTEXT_HEADER_USER_ID = 'x-databricks-user-id';
 
 // Use centralized authentication - only on server side
 async function getProviderToken(): Promise<string> {
-  // First, check if we have a PAT token
+  // PRIORITY 1: Check for user's access token from request context (OBO)
+  const requestCtx = getRequestContext();
+  if (requestCtx?.userAccessToken) {
+    console.log('[OBO] Using user access token from request context');
+    return requestCtx.userAccessToken;
+  }
+
+  // PRIORITY 2: Check if we have a PAT token (legacy/local dev)
   if (process.env.DATABRICKS_TOKEN) {
-    console.log('Using PAT token from DATABRICKS_TOKEN env var');
+    console.log('[Auth] Using PAT token from DATABRICKS_TOKEN env var');
     return process.env.DATABRICKS_TOKEN;
   }
 
-  // Otherwise, use centralized authentication module
+  // PRIORITY 3: Use centralized authentication module (Service Principal or CLI)
+  console.log('[Auth] Using service principal or CLI authentication');
   return getDatabricksToken();
 }
 

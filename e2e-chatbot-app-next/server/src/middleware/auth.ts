@@ -3,17 +3,20 @@ import { getAuthSession, type AuthSession } from '@chat-template/auth';
 import { checkChatAccess } from '@chat-template/core';
 import { ChatSDKError } from '@chat-template/core/errors';
 
-// Extend Express Request type to include session
+// Extend Express Request type to include session and OBO token
 declare global {
   namespace Express {
     interface Request {
       session?: AuthSession;
+      userAccessToken?: string;
+      userEmail?: string;
     }
   }
 }
 
 /**
  * Middleware to authenticate requests and attach session to request object
+ * Also extracts user's access token for OBO (On-Behalf-Of) operations
  */
 export async function authMiddleware(
   req: Request,
@@ -26,6 +29,18 @@ export async function authMiddleware(
         req.headers[name.toLowerCase()] as string | null,
     });
     req.session = session || undefined;
+
+    // Extract user's access token and email for OBO operations
+    // These headers are provided by Databricks Apps when OBO is enabled
+    const userAccessToken = req.headers['x-forwarded-access-token'] as string | undefined;
+    const userEmail = req.headers['x-forwarded-email'] as string | undefined;
+
+    if (userAccessToken) {
+      req.userAccessToken = userAccessToken;
+      req.userEmail = userEmail;
+      console.log('[Auth] User access token received for OBO operations');
+    }
+
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);

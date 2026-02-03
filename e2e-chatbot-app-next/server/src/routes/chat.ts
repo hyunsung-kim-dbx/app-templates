@@ -59,6 +59,7 @@ import {
   CONTEXT_HEADER_USER_ID,
 } from '@chat-template/core';
 import { ChatSDKError } from '@chat-template/core/errors';
+import { setRequestContext } from '@chat-template/ai-sdk-providers';
 
 export const chatRouter: RouterType = Router();
 
@@ -220,6 +221,15 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
 
     // Clear any previous active stream for this chat
     streamCache.clearActiveStream(id);
+
+    // Set request context with user's access token for OBO operations
+    if (req.userAccessToken) {
+      setRequestContext({
+        userAccessToken: req.userAccessToken,
+        userEmail: req.userEmail,
+      });
+      console.log('[OBO] Request context set for serving endpoint calls');
+    }
 
     let finalUsage: LanguageModelUsage | undefined;
     const streamId = generateUUID();
@@ -433,6 +443,14 @@ chatRouter.get(
  */
 chatRouter.post('/title', requireAuth, async (req: Request, res: Response) => {
   try {
+    // Set request context with user's access token for OBO operations
+    if (req.userAccessToken) {
+      setRequestContext({
+        userAccessToken: req.userAccessToken,
+        userEmail: req.userEmail,
+      });
+    }
+
     const { message } = req.body;
     const title = await generateTitleFromUserMessage({ message });
     res.json({ title });
