@@ -8,12 +8,29 @@ interface ExtractedContent {
 /**
  * Extracts Vega-Lite specification from text content.
  * Supports multiple formats:
- * 1. JSON code blocks: ```json\n{...}\n```
- * 2. Raw JSON at the end of text
- * 3. Inline JSON after colons
+ * 1. vega-lite code blocks: ```vega-lite\n{...}\n```
+ * 2. JSON code blocks: ```json\n{...}\n```
+ * 3. Raw JSON at the end of text
+ * 4. Inline JSON after colons
  */
 export function extractVegaSpec(content: string): ExtractedContent {
-  // Pattern 1: JSON code block
+  // Pattern 1: Vega-Lite code block (preferred format)
+  const vegaBlockMatch = content.match(/```vega-lite\s*([\s\S]*?)\s*```/);
+  if (vegaBlockMatch) {
+    try {
+      const spec = JSON.parse(vegaBlockMatch[1]);
+      if (isVegaLiteSpec(spec)) {
+        return {
+          text: content.replace(vegaBlockMatch[0], '').trim(),
+          vegaSpec: spec,
+        };
+      }
+    } catch (err) {
+      console.error('Failed to parse vega-lite block:', err);
+    }
+  }
+
+  // Pattern 2: JSON code block
   const jsonBlockMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
   if (jsonBlockMatch) {
     try {
@@ -24,8 +41,8 @@ export function extractVegaSpec(content: string): ExtractedContent {
           vegaSpec: spec,
         };
       }
-    } catch {
-      // Not valid JSON, continue
+    } catch (err) {
+      console.error('Failed to parse json block:', err);
     }
   }
 
