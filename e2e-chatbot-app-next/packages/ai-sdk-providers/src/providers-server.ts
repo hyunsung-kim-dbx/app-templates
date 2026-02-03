@@ -16,6 +16,19 @@ import { shouldInjectContextForEndpoint, getRequestContext } from './request-con
 export const CONTEXT_HEADER_CONVERSATION_ID = 'x-databricks-conversation-id';
 export const CONTEXT_HEADER_USER_ID = 'x-databricks-user-id';
 
+// Get service principal token for app-level operations (metadata queries, etc.)
+async function getServicePrincipalToken(): Promise<string> {
+  // Check if we have a PAT token (legacy/local dev)
+  if (process.env.DATABRICKS_TOKEN) {
+    console.log('[Auth] Using PAT token from DATABRICKS_TOKEN env var');
+    return process.env.DATABRICKS_TOKEN;
+  }
+
+  // Use centralized authentication module (Service Principal or CLI)
+  console.log('[Auth] Using service principal or CLI authentication');
+  return getDatabricksToken();
+}
+
 // Use centralized authentication - only on server side
 async function getProviderToken(): Promise<string> {
   // PRIORITY 1: Check for user's access token from request context (OBO)
@@ -25,15 +38,8 @@ async function getProviderToken(): Promise<string> {
     return requestCtx.userAccessToken;
   }
 
-  // PRIORITY 2: Check if we have a PAT token (legacy/local dev)
-  if (process.env.DATABRICKS_TOKEN) {
-    console.log('[Auth] Using PAT token from DATABRICKS_TOKEN env var');
-    return process.env.DATABRICKS_TOKEN;
-  }
-
-  // PRIORITY 3: Use centralized authentication module (Service Principal or CLI)
-  console.log('[Auth] Using service principal or CLI authentication');
-  return getDatabricksToken();
+  // PRIORITY 2: Fall back to service principal token
+  return getServicePrincipalToken();
 }
 
 // Cache the workspace hostname once resolved
@@ -241,8 +247,9 @@ async function getOrCreateDatabricksProvider(): Promise<CachedProvider> {
   }
 
   console.log('Creating new OAuth provider');
-  // Ensure we have a valid token before creating provider
-  await getProviderToken();
+  // Ensure we have a valid service principal token before creating provider
+  // (provider initialization is an app-level operation)
+  await getServicePrincipalToken();
   const hostname = await getWorkspaceHostname();
 
   // Create provider with fetch that always uses fresh token
@@ -270,6 +277,7 @@ const provider = createDatabricksProvider({
 }
 
 // Get the task type of the serving endpoint
+// NOTE: This is an app-level operation that requires service principal token
 const getEndpointDetails = async (servingEndpoint: string) => {
   const cached = endpointDetailsCache.get(servingEndpoint);
   if (
@@ -279,8 +287,8 @@ const getEndpointDetails = async (servingEndpoint: string) => {
     return cached;
   }
 
-  // Always get fresh token for each request (will use cache if valid)
-  const currentToken = await getProviderToken();
+  // Use service principal token for metadata queries (app-level operation)
+  const currentToken = await getServicePrincipalToken();
   const hostname = await getWorkspaceHostname();
   const headers = new Headers();
   headers.set('Authorization', `Bearer ${currentToken}`);
