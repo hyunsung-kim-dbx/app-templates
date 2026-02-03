@@ -38,6 +38,8 @@ import { MessageOAuthError } from './message-oauth-error';
 import { isCredentialErrorMessage } from '@/lib/oauth-error-utils';
 import { Streamdown } from 'streamdown';
 import { useApproval } from '@/hooks/use-approval';
+import { VegaChart } from './vega-chart';
+import { extractVegaSpec } from '@/lib/vega-utils';
 
 const PurePreviewMessage = ({
   message,
@@ -180,6 +182,14 @@ const PurePreviewMessage = ({
                 );
               }
               if (mode === 'view') {
+                const textContent = sanitizeText(joinMessagePartSegments(parts));
+
+                // For assistant messages, check for Vega-Lite specs
+                const { text: cleanedText, vegaSpec } =
+                  message.role === 'assistant'
+                    ? extractVegaSpec(textContent)
+                    : { text: textContent, vegaSpec: null };
+
                 return (
                   <div key={key}>
                     <MessageContent
@@ -196,9 +206,8 @@ const PurePreviewMessage = ({
                           : undefined
                       }
                     >
-                      <Response>
-                        {sanitizeText(joinMessagePartSegments(parts))}
-                      </Response>
+                      <Response>{cleanedText}</Response>
+                      {vegaSpec && <VegaChart spec={vegaSpec} />}
                     </MessageContent>
                   </div>
                 );
