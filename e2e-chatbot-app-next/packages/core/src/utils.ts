@@ -28,50 +28,14 @@ export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
 }
 
 /**
- * Truncates a tool output if it exceeds the token limit.
- * Preserves structure for JSON data.
- */
-function truncateToolOutput(
-  output: unknown,
-  maxTokens = 5000,
-): { value: unknown; wasTruncated: boolean } {
-  const outputStr =
-    typeof output === 'string' ? output : JSON.stringify(output);
-  const tokens = tokenizer.encode(outputStr);
-
-  if (tokens.length <= maxTokens) {
-    return { value: output, wasTruncated: false };
-  }
-
-  // Truncate and add indicator
-  const truncatedTokens = tokens.slice(0, maxTokens);
-  const truncatedStr = tokenizer.decode(truncatedTokens);
-
-  const indicator = `\n\n[Output truncated: ${tokens.length} tokens → ${maxTokens} tokens]`;
-
-  return {
-    value: truncatedStr + indicator,
-    wasTruncated: true,
-  };
-}
-
-/**
  * Estimates token count for a single message.
  * Counts tokens in all text content including parts.
- * Optionally truncates large tool outputs.
  */
-function countMessageTokens(
-  message: ChatMessage,
-  truncateToolOutputs = false,
-): { tokens: number; message: ChatMessage } {
+function countMessageTokens(message: ChatMessage): number {
   let totalTokens = 0;
-  let modified = false;
-  const newParts = [...message.parts];
 
   // Count tokens in each part
-  for (let i = 0; i < newParts.length; i++) {
-    const part = newParts[i];
-
+  for (const part of message.parts) {
     if (part.type === 'text' && part.text) {
       totalTokens += tokenizer.encode(part.text).length;
     } else if (part.type === 'dynamic-tool') {
@@ -84,16 +48,8 @@ function countMessageTokens(
         totalTokens += tokenizer.encode(inputStr).length;
       }
 
-      // Count/truncate tool output
+      // Count tool output (don't truncate - it's already in the conversation)
       if (part.output) {
-        if (truncateToolOutputs) {
-          const { value, wasTruncated } = truncateToolOutput(part.output, 5000);
-          if (wasTruncated) {
-            newParts[i] = { ...part, output: value };
-            modified = true;
-          }
-        }
-
         const outputStr =
           typeof part.output === 'string'
             ? part.output
@@ -106,10 +62,7 @@ function countMessageTokens(
   // Add overhead for message structure (role, metadata, etc)
   totalTokens += 4; // approximate overhead per message
 
-  return {
-    tokens: totalTokens,
-    message: modified ? { ...message, parts: newParts } : message,
-  };
+  return totalTokens;
 }
 
 /**
@@ -117,15 +70,12 @@ function countMessageTokens(
  * Uses token-based truncation to handle large data chunks properly.
  * Keeps the most recent messages up to maxTokens limit.
  *
- * Features:
- * - Token-based truncation (accurate for large data chunks)
- * - Truncates individual tool outputs that exceed 5000 tokens
- * - Preserves most recent messages
- * - Logs truncation details for debugging
+ * Strategy: Drop OLD messages, not tool outputs. Tool outputs are already
+ * in the conversation history - we just limit how much history we send.
  *
  * @param messages - Array of chat messages
  * @param maxTokens - Maximum tokens to keep (default: 100000, ~75% of typical 128k context)
- * @returns Truncated array of messages
+ * @returns Truncated array of messages (drops oldest first)
  */
 export function truncateMessages(
   messages: ChatMessage[],
@@ -142,10 +92,8 @@ export function truncateMessages(
 
   // Iterate from newest to oldest
   for (let i = messages.length - 1; i >= 0; i--) {
-    const rawMessage = messages[i];
-
-    // Count tokens and optionally truncate tool outputs
-    const { tokens, message } = countMessageTokens(rawMessage, true);
+    const message = messages[i];
+    const tokens = countMessageTokens(message);
 
     if (totalTokens + tokens <= maxTokens) {
       messagesWithTokens.unshift({ message, tokens });
