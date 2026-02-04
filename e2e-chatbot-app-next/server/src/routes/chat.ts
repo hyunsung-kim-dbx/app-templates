@@ -57,6 +57,7 @@ import {
   type VisibilityType,
   CONTEXT_HEADER_CONVERSATION_ID,
   CONTEXT_HEADER_USER_ID,
+  truncateMessages,
 } from '@chat-template/core';
 import { ChatSDKError } from '@chat-template/core/errors';
 import { setRequestContext } from '@chat-template/ai-sdk-providers';
@@ -234,10 +235,14 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     let finalUsage: LanguageModelUsage | undefined;
     const streamId = generateUUID();
 
+    // Truncate messages to prevent exceeding 4MB API request limit
+    // Keeps the most recent 20 messages by default
+    const truncatedMessages = truncateMessages(uiMessages);
+
     const model = await myProvider.languageModel(selectedChatModel);
     const result = streamText({
       model,
-      messages: await convertToModelMessages(uiMessages),
+      messages: await convertToModelMessages(truncatedMessages),
       headers: {
         [CONTEXT_HEADER_CONVERSATION_ID]: id,
         [CONTEXT_HEADER_USER_ID]: session.user.email ?? session.user.id,

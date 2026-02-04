@@ -50,6 +50,7 @@
     "@chat-template/db": "*",
     "@chat-template/utils": "*",
     "date-fns": "^4.1.0",
+    "js-tiktoken": "^1.0.21",
     "zod": "^4.3.5"
   }
 }
