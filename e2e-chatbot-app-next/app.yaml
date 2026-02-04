@@ -13,3 +13,13 @@ user_api_scopes:
 env:
   - name: DATABRICKS_SERVING_ENDPOINT
     valueFrom: serving-endpoint
+  - name: PGHOST
+    value: instance-7a2538b2-2809-42a7-922e-a8f76e3d08db.database.cloud.databricks.com
+  - name: PGUSER
+    valueFrom: current-user
+  - name: PGDATABASE
+    value: databricks_postgres
+  - name: PGPORT
+    value: "5432"
+  - name: PGSSLMODE
+    value: require
