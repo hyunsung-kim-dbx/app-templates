@@ -97,6 +97,8 @@ export function updateJobStatus(
 
 /**
  * Append text to job's partial result
+ * Updates the LAST text part if it exists, otherwise creates a new one.
+ * This preserves text-tool-text ordering when tool calls split text.
  */
 export function appendJobText(jobId: string, text: string): void {
   const job = jobs.get(jobId);
@@ -105,12 +107,13 @@ export function appendJobText(jobId: string, text: string): void {
     job.partsReceived++;
     job.updatedAt = new Date();
 
-    // Also update or create text part in parts array
-    const existingTextPart = job.parts.find(p => p.type === 'text');
-    if (existingTextPart) {
-      existingTextPart.text = job.partialText;
+    // Find the LAST part - if it's a text part, append to it
+    const lastPart = job.parts.length > 0 ? job.parts[job.parts.length - 1] : null;
+    if (lastPart && lastPart.type === 'text') {
+      lastPart.text += text;
     } else {
-      job.parts.push({ type: 'text', text: job.partialText });
+      // Last part is not text (or no parts yet), create new text part
+      job.parts.push({ type: 'text', text: text });
     }
   }
 }
