@@ -15,7 +15,7 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "npm run dev --workspace=@databricks/chatbot-server",
     "dev:client": "npm run dev --workspace=@databricks/chatbot-client",
-    "build": "npm install && npm run db:migrate && npm run build:client && npm run build:server",
+    "build": "npm install --legacy-peer-deps && npm run db:migrate && npm run build:client && npm run build:server",
     "build:client": "npm run build --workspace=@databricks/chatbot-client",
     "build:server": "npm run build --workspace=@databricks/chatbot-server",
     "start": "npm run start --workspace=@databricks/chatbot-server",
