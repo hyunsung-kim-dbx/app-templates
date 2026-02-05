@@ -263,61 +263,77 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
      * We manually create the stream to have access to the stream writer.
      * This allows us to inject custom stream parts like data-error.
      *
-     * Added response size limiting with pacing to prevent stream overflow.
+     * Size monitoring: We track response size via side effects without
+     * intercepting the stream, allowing proper part collection.
      */
     let totalCharsStreamed = 0;
-    let chunksSent = 0;
+    let lastLoggedSize = 0;
+    const shouldTruncate = { value: false };
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        // Wrap the stream to add pacing for large responses
-        const pacedStream = async function* () {
-          for await (const part of result.toUIMessageStream({
-            originalMessages: uiMessages,
-            generateMessageId: generateUUID,
-            sendReasoning: true,
-            sendSources: true,
-            onError: (error) => {
-              console.error('Stream error:', error);
-              const errorMessage =
-                error instanceof Error ? error.message : JSON.stringify(error);
-              return errorMessage;
-            },
-          })) {
-            // Monitor total response size
+        // Wrap the original stream to monitor size via side effects
+        const originalStream = result.toUIMessageStream({
+          originalMessages: uiMessages,
+          generateMessageId: generateUUID,
+          sendReasoning: true,
+          sendSources: true,
+          onError: (error) => {
+            console.error('Stream error:', error);
+
+            const errorMessage =
+              error instanceof Error ? error.message : JSON.stringify(error);
+
+            writer.write({ type: 'data-error', data: errorMessage });
+
+            return errorMessage;
+          },
+        });
+
+        // Monitor and optionally truncate large responses
+        const monitoredStream = (async function* () {
+          for await (const part of originalStream) {
+            // Track size for monitoring
             if (part.type === 'text' && typeof part.text === 'string') {
               totalCharsStreamed += part.text.length;
 
-              // Check if we're exceeding safe limits
-              if (totalCharsStreamed > STREAM_CONFIG.MAX_RESPONSE_SIZE * STREAM_CONFIG.MAX_MESSAGE_CHUNKS) {
-                console.warn(`Response truncated at ${totalCharsStreamed} chars (max: ${STREAM_CONFIG.MAX_RESPONSE_SIZE * STREAM_CONFIG.MAX_MESSAGE_CHUNKS}) to prevent stream overflow`);
-                yield {
-                  type: 'text',
-                  text: '\n\n_[Response truncated - output too large. Please ask for a more concise response.]_',
-                };
-                break;
+              // Log progress every 50K chars
+              if (totalCharsStreamed - lastLoggedSize > 50000) {
+                console.log(`[Streaming] ${Math.floor(totalCharsStreamed / 1000)}K chars sent`);
+                lastLoggedSize = totalCharsStreamed;
               }
 
-              // Add small delay every N chunks to pace the stream
-              chunksSent++;
-              if (chunksSent % 50 === 0 && part.text.length > 100) {
-                // Add a tiny pause every 50 chunks to prevent overwhelming the connection
-                await new Promise(resolve => setTimeout(resolve, 5));
+              // Check if we should truncate
+              const maxSize = STREAM_CONFIG.MAX_RESPONSE_SIZE * STREAM_CONFIG.MAX_MESSAGE_CHUNKS;
+              if (!shouldTruncate.value && totalCharsStreamed > maxSize) {
+                shouldTruncate.value = true;
+                console.warn(`[Streaming] Response size ${totalCharsStreamed} exceeds limit ${maxSize}. Truncating.`);
+
+                // Yield truncation message
+                yield {
+                  type: 'text',
+                  text: '\n\n_[Response truncated - output exceeds size limit. Please ask for a more concise response.]_',
+                };
+
+                // Stop processing further parts
+                return;
               }
             }
 
+            // Always yield the part (no modification)
             yield part;
           }
+        })();
 
-          // Log final stats
-          if (totalCharsStreamed > STREAM_CONFIG.MAX_RESPONSE_SIZE) {
-            console.log(`Large response: ${totalCharsStreamed} chars (${Math.ceil(totalCharsStreamed / STREAM_CONFIG.MAX_RESPONSE_SIZE)}x normal size)`);
-          }
-        };
-
-        writer.merge(pacedStream());
+        // Merge the monitored stream
+        writer.merge(monitoredStream);
       },
       onFinish: async ({ responseMessage }) => {
+        // Log final stats
+        if (totalCharsStreamed > 0) {
+          console.log(`[Streaming] Completed. Total size: ${Math.floor(totalCharsStreamed / 1000)}K chars. Parts collected: ${responseMessage.parts.length}. Truncated: ${shouldTruncate.value}`);
+        }
+
         console.log(
           'Finished message stream! Saving message...',
           JSON.stringify(responseMessage, null, 2),
