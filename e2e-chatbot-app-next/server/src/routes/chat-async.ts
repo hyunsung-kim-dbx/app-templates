@@ -71,10 +71,9 @@ function toV3Usage(usage: LanguageModelUsage): LanguageModelV3Usage {
 }
 
 /**
- * Filters out incomplete tool calls from messages.
- * Tool calls without results (state !== 'output-available' or missing output/result)
- * cause MissingToolResultsError when sent to the AI SDK.
- * This happens when a previous request timed out mid-tool-execution.
+ * Filters and fixes tool calls from messages.
+ * - Removes incomplete tool calls (missing output/result)
+ * - Adds missing fields required by convertToModelMessages (id, args, result)
  */
 function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
   return messages.map((message) => {
@@ -82,22 +81,37 @@ function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
       return message;
     }
 
-    // Filter out dynamic-tool parts that don't have output/result
-    const filteredParts = message.parts.filter((part: any) => {
-      if (part.type === 'dynamic-tool') {
-        // Check for both 'output' and 'result' as either could be present
-        const hasResult = part.state === 'output-available' &&
-          (part.output !== undefined || part.result !== undefined);
-        if (!hasResult) {
-          console.log(`[AsyncChat] Filtering incomplete tool call: ${part.toolName} (${part.toolCallId})`);
+    // Filter and fix dynamic-tool parts
+    const filteredParts = message.parts
+      .filter((part: any) => {
+        if (part.type === 'dynamic-tool') {
+          // Check for both 'output' and 'result' as either could be present
+          const hasResult = part.state === 'output-available' &&
+            (part.output !== undefined || part.result !== undefined);
+          if (!hasResult) {
+            console.log(`[AsyncChat] Filtering incomplete tool call: ${part.toolName} (${part.toolCallId})`);
+          }
+          return hasResult;
         }
-        return hasResult;
-      }
-      return true;
-    });
+        return true;
+      })
+      .map((part: any) => {
+        // Fix tool calls that are missing required fields for conversion
+        if (part.type === 'dynamic-tool') {
+          return {
+            ...part,
+            // Ensure 'id' field exists (required by convertToModelMessages)
+            id: part.id ?? part.toolCallId,
+            // Ensure 'args' field exists (AI SDK expects 'args' not 'input')
+            args: part.args ?? part.input,
+            // Ensure 'result' field exists (AI SDK expects 'result' not 'output')
+            result: part.result ?? part.output,
+          };
+        }
+        return part;
+      });
 
     // If all parts were filtered out, return message with placeholder
-    // This prevents empty assistant messages which can also cause issues
     if (filteredParts.length === 0 && message.parts.length > 0) {
       console.log(`[AsyncChat] All parts filtered from message ${message.id}, adding placeholder`);
       return {
