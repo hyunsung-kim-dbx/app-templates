@@ -1,6 +1,6 @@
 import { WebSocket, WebSocketServer } from 'ws';
-import type { Server } from 'http';
-import type { IncomingMessage } from 'http';
+import type { Server } from 'node:http';
+import type { IncomingMessage } from 'node:http';
 import { streamText, convertToModelMessages, type LanguageModelUsage } from 'ai';
 import type { LanguageModelV3Usage } from '@ai-sdk/provider';
 import { saveMessages, updateChatLastContextById } from '@chat-template/db';
@@ -83,9 +83,9 @@ export function initializeWebSocketServer(server: Server): WebSocketServer {
     console.log('[WebSocket] New connection');
 
     // Track last pong to detect dead connections
-    let lastPong = Date.now();
+    let _lastPong = Date.now();
     ws.on('pong', () => {
-      lastPong = Date.now();
+      _lastPong = Date.now();
     });
 
     // Try to authenticate from headers (for initial connection)
@@ -138,17 +138,38 @@ export function initializeWebSocketServer(server: Server): WebSocketServer {
 function authenticateFromHeaders(ws: AuthenticatedWebSocket, req: IncomingMessage): void {
   const headers = req.headers;
 
+  // Debug: Log all x-forwarded and authorization headers for OBO troubleshooting
+  const relevantHeaders = Object.entries(headers)
+    .filter(([key]) =>
+      key.toLowerCase().startsWith('x-forwarded') ||
+      key.toLowerCase().startsWith('x-databricks') ||
+      key.toLowerCase() === 'authorization'
+    )
+    .map(([key, value]) => {
+      const val = String(value);
+      if (key.toLowerCase().includes('token') || key.toLowerCase() === 'authorization') {
+        return `${key}: ${val.length > 20 ? `${val.substring(0, 10)}...${val.substring(val.length - 10)} (len=${val.length})` : '***SHORT***'}`;
+      }
+      return `${key}: ${val}`;
+    });
+  console.log('[WebSocket Auth Debug] Headers:', relevantHeaders.length > 0 ? relevantHeaders.join(', ') : 'NONE');
+
   // Check for Databricks Apps headers
   const userId = headers['x-forwarded-user'] as string;
   const userEmail = headers['x-forwarded-email'] as string;
-  const userAccessToken = headers['x-databricks-user-access-token'] as string;
+  // Try multiple possible header names for the user access token
+  const userAccessToken = (
+    headers['x-forwarded-access-token'] ||
+    headers['x-databricks-user-access-token'] ||
+    headers['x-databricks-access-token']
+  ) as string;
 
   if (userId) {
     ws.userId = userId;
     ws.userEmail = userEmail;
     ws.userAccessToken = userAccessToken;
     ws.isAuthenticated = true;
-    console.log('[WebSocket] Authenticated from headers:', userEmail || userId);
+    console.log('[WebSocket] Authenticated from headers:', userEmail || userId, userAccessToken ? '(with OBO token)' : '(no OBO token)');
   }
 }
 
@@ -160,10 +181,14 @@ function handleAuthMessage(ws: AuthenticatedWebSocket, message: WebSocketAuthMes
     const headers = message.headers;
     ws.userId = headers['x-forwarded-user'];
     ws.userEmail = headers['x-forwarded-email'];
-    ws.userAccessToken = headers['x-databricks-user-access-token'];
+    // Try multiple possible header names for the user access token
+    ws.userAccessToken =
+      headers['x-forwarded-access-token'] ||
+      headers['x-databricks-user-access-token'] ||
+      headers['x-databricks-access-token'];
     ws.isAuthenticated = !!ws.userId;
 
-    console.log('[WebSocket] Authenticated via message:', ws.userEmail || ws.userId);
+    console.log('[WebSocket] Authenticated via message:', ws.userEmail || ws.userId, ws.userAccessToken ? '(with OBO token)' : '(no OBO token)');
   }
 
   ws.send(JSON.stringify({

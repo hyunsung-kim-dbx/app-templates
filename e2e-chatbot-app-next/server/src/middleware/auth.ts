@@ -24,6 +24,23 @@ export async function authMiddleware(
   next: NextFunction,
 ) {
   try {
+    // Debug: Log all x-forwarded and authorization headers for OBO troubleshooting
+    const relevantHeaders = Object.entries(req.headers)
+      .filter(([key]) =>
+        key.toLowerCase().startsWith('x-forwarded') ||
+        key.toLowerCase().startsWith('x-databricks') ||
+        key.toLowerCase() === 'authorization'
+      )
+      .map(([key, value]) => {
+        // Mask token values for security
+        const val = String(value);
+        if (key.toLowerCase().includes('token') || key.toLowerCase() === 'authorization') {
+          return `${key}: ${val.length > 20 ? `${val.substring(0, 10)}...${val.substring(val.length - 10)} (len=${val.length})` : '***SHORT***'}`;
+        }
+        return `${key}: ${val}`;
+      });
+    console.log('[Auth Debug] Relevant headers:', relevantHeaders.length > 0 ? relevantHeaders.join(', ') : 'NONE');
+
     const session = await getAuthSession({
       getRequestHeader: (name: string) =>
         req.headers[name.toLowerCase()] as string | null,
@@ -33,7 +50,11 @@ export async function authMiddleware(
     // Extract user's access token and email for OBO operations
     // These headers are provided by Databricks Apps when OBO is enabled
     // Using req.header() as recommended by Express docs (case-insensitive)
-    const userAccessToken = req.header('x-forwarded-access-token');
+    // Try multiple possible header names for the user access token
+    const userAccessToken =
+      req.header('x-forwarded-access-token') ||
+      req.header('x-databricks-user-access-token') ||
+      req.header('x-databricks-access-token');
     const userEmail = req.header('x-forwarded-email');
 
     if (userAccessToken) {
