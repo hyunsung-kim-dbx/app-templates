@@ -11,6 +11,8 @@ user_api_scopes:
   - catalog.tables:read        # Optional: for table access
 
 env:
+  - name: LOG_SSE_EVENTS
+    value: "true"
   - name: DATABRICKS_SERVING_ENDPOINT
     valueFrom: serving-endpoint
   - name: PGHOST

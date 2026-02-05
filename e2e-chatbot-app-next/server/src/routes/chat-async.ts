@@ -335,14 +335,21 @@ async function processChat(params: {
 
     // Use fullStream to capture all part types
     for await (const part of result.fullStream) {
+      // Debug: Log each part type and content
+      console.log(`[AsyncChat Stream] Part type: ${part.type}`, JSON.stringify(part).slice(0, 200));
+
       switch (part.type) {
         case 'text-delta':
-          fullText += part.textDelta;
-          appendJobText(jobId, part.textDelta);
+          if (part.textDelta != null) {
+            fullText += part.textDelta;
+            appendJobText(jobId, part.textDelta);
+          }
           break;
 
         case 'reasoning':
-          reasoningText += part.textDelta;
+          if (part.textDelta != null) {
+            reasoningText += part.textDelta;
+          }
           break;
 
         case 'tool-call':
