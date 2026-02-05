@@ -93,24 +93,31 @@ export function AsyncChat({
     }
   }, [isNewChat, messages.length, id, fetchChatHistory]);
 
-  // Handle form submit
-  const handleSubmit = useCallback(async (e?: React.FormEvent) => {
-    e?.preventDefault();
+  // Handle form submit - accepts message object from MultimodalInput
+  const handleSubmit = useCallback(async (message: { role: string; parts: Array<{ type: string; text?: string; url?: string; name?: string; mediaType?: string }> }) => {
+    // Extract text from parts
+    const textPart = message.parts.find(p => p.type === 'text');
+    const text = textPart && 'text' in textPart ? textPart.text || '' : '';
 
-    if (!input.trim() && attachments.length === 0) {
+    // Extract attachments from parts
+    const fileParts = message.parts.filter(p => p.type === 'file');
+    const messageAttachments = fileParts.map(p => ({
+      url: p.url || '',
+      name: p.name || '',
+      contentType: p.mediaType || '',
+    }));
+
+    if (!text.trim() && messageAttachments.length === 0) {
       return;
     }
 
-    const currentInput = input;
-    const currentAttachments = [...attachments];
-
-    // Clear input immediately
+    // Clear input (MultimodalInput also clears, but be safe)
     setInput('');
     setAttachments([]);
 
-    // Send message
-    await sendMessage(currentInput, currentAttachments);
-  }, [input, attachments, sendMessage]);
+    // Send message using useAsyncChat's sendMessage
+    await sendMessage(text, messageAttachments);
+  }, [sendMessage, setInput, setAttachments]);
 
   const [searchParams] = useSearchParams();
 
@@ -148,7 +155,7 @@ export function AsyncChat({
         selectedModelId={selectedChatModel}
       />
 
-      <form className="mx-auto flex w-full gap-2 bg-background px-4 pb-4 md:max-w-3xl md:pb-6">
+      <div className="mx-auto flex w-full gap-2 bg-background px-4 pb-4 md:max-w-3xl md:pb-6">
         <MultimodalInput
           chatId={id}
           input={input}
@@ -157,12 +164,12 @@ export function AsyncChat({
           stop={stop}
           attachments={attachments}
           setAttachments={setAttachments}
+          messages={messages}
+          setMessages={setMessages}
           sendMessage={handleSubmit}
-          selectedChatModel={selectedChatModel}
-          setSelectedChatModel={setSelectedChatModel}
-          isReadonly={isReadonly}
+          selectedVisibilityType={visibilityType}
         />
-      </form>
+      </div>
 
       {/* Status indicator for async polling */}
       {status === 'streaming' && (
