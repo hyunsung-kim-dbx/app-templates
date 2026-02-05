@@ -67,6 +67,10 @@ export function sanitizeText(text: string) {
 
   // Remove agent names that appear immediately before tables
   // Pattern: kebab-case name (like agent-krafton-meta) directly followed by |
+  const agentPattern = /[a-z][a-z0-9]*(?:-[a-z0-9]+)+\|/gi;
+  if (agentPattern.test(result)) {
+    console.log('[sanitizeText] BEFORE:', result.substring(0, 100));
+  }
   result = result.replace(/[a-z][a-z0-9]*(?:-[a-z0-9]+)+\|/gi, '|');
 
   return result;
