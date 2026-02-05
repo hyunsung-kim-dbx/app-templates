@@ -108,6 +108,7 @@ export function Chat({
     resume: id !== undefined && initialMessages.length > 0, // Enable automatic stream resumption
     transport: new ChatTransport({
       onStreamPart: (part) => {
+        console.log('[ChatTransport] Stream part received:', part.type, part);
         // As soon as we recive a stream part, we fetch the chat history again for new chats
         if (isNewChat && !didFetchHistoryOnNewChat.current) {
           fetchChatHistory();
@@ -117,7 +118,10 @@ export function Chat({
         resumeAttemptCountRef.current = 0;
 
         // Keep track of the number of stream parts received
-        setStreamCursor((cursor) => cursor + 1);
+        setStreamCursor((cursor) => {
+          console.log('[ChatTransport] Stream cursor:', cursor, '->', cursor + 1);
+          return cursor + 1;
+        });
         setLastPart(part);
       },
       api: '/api/chat',
@@ -166,10 +170,11 @@ export function Chat({
       },
     }),
     onData: (dataPart) => {
-      setDataStream((ds) => [
-        ...(ds || []),
-        dataPart as DataUIPart<CustomUIDataTypes>,
-      ]);
+      console.log('[useChat] onData called:', dataPart.type, dataPart);
+      setDataStream((ds) => {
+        console.log('[useChat] setDataStream - current length:', ds?.length || 0);
+        return [...(ds || []), dataPart as DataUIPart<CustomUIDataTypes>];
+      });
       if (dataPart.type === 'data-usage') {
         setUsage(dataPart.data as LanguageModelUsage);
       }
@@ -180,6 +185,7 @@ export function Chat({
       isError,
       messages: finishedMessages,
     }) => {
+      console.log('[useChat] onFinish called:', { isAbort, isDisconnect, isError, messageCount: finishedMessages?.length });
       // Reset state for next message
       didFetchHistoryOnNewChat.current = false;
 
