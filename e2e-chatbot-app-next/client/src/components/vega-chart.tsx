@@ -12,17 +12,25 @@ export function VegaChart({ spec, className }: VegaChartProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  console.log('[VegaChart] Rendering with spec schema:', spec.$schema);
+  console.log('[VegaChart] Component render - has spec:', !!spec, 'has container:', !!container);
 
   // Stable ID for this chart instance
   const chartId = useMemo(() => {
-    return `vega-chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const id = `vega-chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    console.log('[VegaChart] Generated chartId:', id);
+    return id;
   }, []); // Only generate once per component instance
 
   // Use callback ref to reliably get the container element
   const setContainerRef = useCallback((node: HTMLDivElement | null) => {
-    console.log('[VegaChart] Callback ref called, node:', !!node);
-    setContainer(node);
+    console.log('[VegaChart] ⚡ Callback ref called! Node:', !!node, 'Node type:', node?.nodeName);
+    if (node) {
+      console.log('[VegaChart] Setting container state...');
+      setContainer(node);
+    } else {
+      console.log('[VegaChart] Node is null, clearing container');
+      setContainer(null);
+    }
   }, []);
 
   useEffect(() => {
@@ -111,31 +119,7 @@ export function VegaChart({ spec, className }: VegaChartProps) {
     };
   }, [container, spec]);
 
-  if (error) {
-    return (
-      <div className="rounded border border-red-300 bg-red-50 p-4 text-red-700">
-        <p className="font-semibold text-sm">Chart Rendering Error</p>
-        <p className="text-xs">{error}</p>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div
-        className={cn(
-          'vega-chart-container my-4 flex min-h-[300px] items-center justify-center overflow-auto rounded-lg border bg-white p-4',
-          className,
-        )}
-      >
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-          <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm">Loading visualization...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Always render the container div (needed for callback ref to be called)
   return (
     <div
       id={chartId}
@@ -144,8 +128,23 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         'vega-chart-container my-4 min-h-[300px] overflow-auto rounded-lg border bg-white p-4',
         className,
       )}
-      // Prevent React from managing this subtree
       suppressHydrationWarning
-    />
+    >
+      {error && (
+        <div className="rounded border border-red-300 bg-red-50 p-4 text-red-700">
+          <p className="font-semibold text-sm">Chart Rendering Error</p>
+          <p className="text-xs">{error}</p>
+        </div>
+      )}
+
+      {isLoading && !error && (
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm">Loading visualization...</p>
+        </div>
+      )}
+
+      {/* Vega will inject the chart here when ready */}
+    </div>
   );
 }
