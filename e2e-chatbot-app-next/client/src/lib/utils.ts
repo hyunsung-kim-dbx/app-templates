@@ -66,26 +66,17 @@ export function sanitizeText(text: string) {
   // Remove internal markers
   let result = text.replace('<has_function_call>', '');
 
-  // Skip table formatting if no tables detected
-  if (!result.includes('|')) {
-    return result;
-  }
-
-  // 1. Add newline BEFORE table starts (text immediately followed by | |)
-  result = result.replace(/([a-zA-Z0-9\u3131-\uD79D])(\| *\|)/g, '$1\n\n$2');
-
-  // 2. Add newline BEFORE separator row (| followed by |---)
-  result = result.replace(/\| *(\|[-:]+)/g, '|\n$1');
-
-  // 3. Add newline AFTER separator row (---| followed by |)
-  result = result.replace(/([-:]\|) *(\| *[0-9])/g, '$1\n$2');
-
-  // 4. Add newline between data rows (| | followed by digit = new row)
-  result = result.replace(/\| *\| *([0-9])/g, '|\n| $1');
-
-  // 5. Add newline AFTER table ends (| followed by non-table text)
-  // Match | followed by a word that's clearly not a table cell (Korean or long text)
-  result = result.replace(/\|([#\u3131-\uD79D])/g, '|\n\n$1');
+  // Detect agent/step names (kebab-case patterns like "agent-krafton-meta", "kpi-social-poc")
+  // and add visual breaks around them
+  // Pattern: word-word or word-word-word at start or after |
+  result = result.replace(
+    /(\|)?([a-z]+-[a-z]+(?:-[a-z]+)*)(\||\s*[#\u3131-\uD79D])/gi,
+    (match, beforePipe, agentName, after) => {
+      const prefix = beforePipe ? '|\n\n' : '';
+      const suffix = after === '|' ? '\n\n|' : `\n\n${after}`;
+      return `${prefix}**🤖 ${agentName}**${suffix}`;
+    }
+  );
 
   // Clean up excessive newlines
   result = result.replace(/\n{3,}/g, '\n\n');
