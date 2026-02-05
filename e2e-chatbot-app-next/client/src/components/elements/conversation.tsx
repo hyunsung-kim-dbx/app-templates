@@ -1,27 +1,21 @@
 import { cn } from '@/lib/utils';
 import type { ComponentProps } from 'react';
-import { StickToBottom } from 'use-stick-to-bottom';
 
-type ConversationProps = ComponentProps<typeof StickToBottom>;
+type ConversationProps = ComponentProps<'div'>;
 
 export const Conversation = ({ className, ...props }: ConversationProps) => (
-  <StickToBottom
-    className={cn(
-      'relative flex-1 touch-pan-y overflow-y-auto will-change-scroll',
-      className,
-    )}
-    initial="smooth"
-    resize="smooth"
+  <div
+    className={cn('relative flex-1', className)}
     role="log"
     {...props}
   />
 );
 
-type ConversationContentProps = ComponentProps<typeof StickToBottom.Content>;
+type ConversationContentProps = ComponentProps<'div'>;
 
 export const ConversationContent = ({
   className,
   ...props
 }: ConversationContentProps) => (
-  <StickToBottom.Content className={cn('p-4', className)} {...props} />
+  <div className={cn('p-4', className)} {...props} />
 );
