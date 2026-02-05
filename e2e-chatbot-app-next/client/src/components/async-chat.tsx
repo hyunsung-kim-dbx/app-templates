@@ -133,7 +133,7 @@ export function AsyncChat({
 
       <Messages
         chatId={id}
-        status={isLoading ? 'streaming' : 'ready'}
+        status={status === 'starting' ? 'submitted' : status === 'streaming' ? 'streaming' : 'ready'}
         messages={messages}
         setMessages={setMessages}
         sendMessage={handleSubmit}
@@ -160,7 +160,7 @@ export function AsyncChat({
           chatId={id}
           input={input}
           setInput={setInput}
-          status={isLoading ? 'streaming' : 'ready'}
+          status={status === 'starting' ? 'submitted' : status === 'streaming' ? 'streaming' : 'ready'}
           stop={stop}
           attachments={attachments}
           setAttachments={setAttachments}
