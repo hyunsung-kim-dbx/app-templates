@@ -463,6 +463,16 @@ async function processChat(params: {
           // Text boundaries - skip
           break;
 
+        case 'error': {
+          // Handle error parts from the stream
+          const errorInfo = (part as any).error;
+          const errorName = errorInfo?.name || 'Unknown error';
+          const errorMessage = errorInfo?.message || JSON.stringify(errorInfo);
+          console.error(`[AsyncChat] Stream error: ${errorName}`, errorMessage);
+          // Don't throw here - let the stream finish and catch block handle it
+          break;
+        }
+
         default:
           // Log any unhandled part types
           console.log(`[AsyncChat Stream] UNHANDLED part type: ${part.type}`, JSON.stringify(part).slice(0, 500));

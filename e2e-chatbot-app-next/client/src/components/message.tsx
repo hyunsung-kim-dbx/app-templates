@@ -185,10 +185,10 @@ const PurePreviewMessage = ({
                 const textContent = sanitizeText(joinMessagePartSegments(parts));
 
                 // For assistant messages, check for Vega-Lite specs
-                const { text: cleanedText, vegaSpec } =
+                const { text: cleanedText, vegaSpecs } =
                   message.role === 'assistant'
                     ? extractVegaSpec(textContent)
-                    : { text: textContent, vegaSpec: null };
+                    : { text: textContent, vegaSpecs: [] };
 
                 return (
                   <div key={key}>
@@ -207,7 +207,9 @@ const PurePreviewMessage = ({
                       }
                     >
                       <Response>{cleanedText}</Response>
-                      {vegaSpec && <VegaChart spec={vegaSpec} />}
+                      {vegaSpecs.map((spec, idx) => (
+                        <VegaChart key={idx} spec={spec} />
+                      ))}
                     </MessageContent>
                   </div>
                 );
