@@ -66,8 +66,8 @@ export function sanitizeText(text: string) {
   let result = text.replace('<has_function_call>', '');
 
   // Remove agent names that appear immediately before tables
-  // Pattern: kebab-case name (like agent-sungil-kpi) directly followed by | (table start)
-  result = result.replace(/[a-z][a-z0-9]*(?:-[a-z0-9]+)+\|(\s*\|)/gi, '|$1');
+  // Pattern: kebab-case name (like agent-krafton-meta) directly followed by |
+  result = result.replace(/[a-z][a-z0-9]*(?:-[a-z0-9]+)+\|/gi, '|');
 
   return result;
 }
