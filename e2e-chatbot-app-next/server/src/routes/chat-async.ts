@@ -419,6 +419,26 @@ async function processChat(params: {
           finishReason = part.finishReason;
           break;
 
+        case 'step-start':
+          // Agent step starting - add to parts for UI
+          console.log(`[AsyncChat] Step started:`, JSON.stringify(part).slice(0, 500));
+          addJobPart(jobId, {
+            type: 'step-start',
+            ...(part as any),
+          });
+          break;
+
+        case 'step-finish':
+        case 'finish-step':
+          // Agent step finished
+          console.log(`[AsyncChat] Step finished:`, JSON.stringify(part).slice(0, 500));
+          break;
+
+        case 'text-start':
+        case 'text-end':
+          // Text boundaries - skip
+          break;
+
         default:
           // Log any unhandled part types
           console.log(`[AsyncChat Stream] UNHANDLED part type: ${part.type}`, JSON.stringify(part).slice(0, 500));
