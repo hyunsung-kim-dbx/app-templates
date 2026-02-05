@@ -122,7 +122,7 @@ export function AsyncChat({
   const [searchParams] = useSearchParams();
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col bg-background">
+    <div className="flex h-dvh min-w-0 flex-col bg-background" style={{ overscrollBehavior: 'contain' }}>
       <ChatHeader
         chatId={id}
         selectedChatModel={selectedChatModel}
