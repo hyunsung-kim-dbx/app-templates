@@ -6,6 +6,47 @@ interface ExtractedContent {
 }
 
 /**
+ * Extracts Vega-Lite spec from UC function tool output format.
+ * Format: {"columns":["output"],"rows":[["{...vega spec...}"]]}
+ */
+export function extractVegaFromToolOutput(
+  output: unknown,
+): VisualizationSpec | null {
+  try {
+    // Check if output matches the expected structure
+    if (
+      typeof output === 'object' &&
+      output !== null &&
+      'rows' in output &&
+      Array.isArray((output as any).rows)
+    ) {
+      const rows = (output as any).rows;
+      if (rows.length > 0 && Array.isArray(rows[0]) && rows[0].length > 0) {
+        const specString = rows[0][0];
+        if (typeof specString === 'string') {
+          const spec = JSON.parse(specString);
+          if (isVegaLiteSpec(spec)) {
+            return spec;
+          }
+        }
+      }
+    }
+
+    // Also try parsing if output is a string directly
+    if (typeof output === 'string') {
+      const spec = JSON.parse(output);
+      if (isVegaLiteSpec(spec)) {
+        return spec;
+      }
+    }
+  } catch (_err) {
+    // Not a valid Vega spec, ignore
+  }
+
+  return null;
+}
+
+/**
  * Extracts Vega-Lite specification from text content.
  * Supports multiple formats:
  * 1. vega-lite code blocks: ```vega-lite\n{...}\n```

@@ -166,9 +166,10 @@ export function Chat({
       },
     }),
     onData: (dataPart) => {
-      setDataStream((ds) =>
-        ds ? [...ds, dataPart as DataUIPart<CustomUIDataTypes>] : [],
-      );
+      setDataStream((ds) => [
+        ...(ds || []),
+        dataPart as DataUIPart<CustomUIDataTypes>,
+      ]);
       if (dataPart.type === 'data-usage') {
         setUsage(dataPart.data as LanguageModelUsage);
       }

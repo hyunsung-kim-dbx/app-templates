@@ -39,7 +39,7 @@ import { isCredentialErrorMessage } from '@/lib/oauth-error-utils';
 import { Streamdown } from 'streamdown';
 import { useApproval } from '@/hooks/use-approval';
 import { VegaChart } from './vega-chart';
-import { extractVegaSpec } from '@/lib/vega-utils';
+import { extractVegaSpec, extractVegaFromToolOutput } from '@/lib/vega-utils';
 
 const PurePreviewMessage = ({
   message,
@@ -313,32 +313,42 @@ const PurePreviewMessage = ({
               }
 
               // Render regular tool calls
+              // Check if output contains a Vega-Lite spec
+              const vegaSpecFromTool =
+                state === 'output-available' && output
+                  ? extractVegaFromToolOutput(output)
+                  : null;
+
               return (
                 <Tool key={toolCallId} defaultOpen={true}>
-                  <ToolHeader
-                    type={toolName}
-                    state={effectiveState}
-                  />
+                  <ToolHeader type={toolName} state={effectiveState} />
                   <ToolContent>
                     <ToolInput input={input} />
-                    {state === 'output-available' && (
-                      <ToolOutput
-                        output={
-                          errorText ? (
-                            <div className="rounded border p-2 text-red-500">
-                              Error: {errorText}
-                            </div>
-                          ) : (
-                            <div className="whitespace-pre-wrap font-mono text-sm">
-                              {typeof output === 'string'
-                                ? output
-                                : JSON.stringify(output, null, 2)}
-                            </div>
-                          )
-                        }
-                        errorText={undefined}
-                      />
-                    )}
+                    {state === 'output-available' &&
+                      (vegaSpecFromTool ? (
+                        // Render as interactive chart
+                        <div className="my-4">
+                          <VegaChart spec={vegaSpecFromTool} />
+                        </div>
+                      ) : (
+                        // Render as regular output
+                        <ToolOutput
+                          output={
+                            errorText ? (
+                              <div className="rounded border p-2 text-red-500">
+                                Error: {errorText}
+                              </div>
+                            ) : (
+                              <div className="whitespace-pre-wrap font-mono text-sm">
+                                {typeof output === 'string'
+                                  ? output
+                                  : JSON.stringify(output, null, 2)}
+                              </div>
+                            )
+                          }
+                          errorText={undefined}
+                        />
+                      ))}
                   </ToolContent>
                 </Tool>
               );
