@@ -420,7 +420,7 @@ export const PreviewMessage = memo(
       return false;
     if (!equal(prevProps.message.parts, nextProps.message.parts)) return false;
 
-    return true; // Props are equal, skip re-render
+    return false;
   },
 );
 
