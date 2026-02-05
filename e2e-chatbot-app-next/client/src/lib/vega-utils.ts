@@ -55,20 +55,28 @@ export function extractVegaFromToolOutput(
  * 4. Inline JSON after colons
  */
 export function extractVegaSpec(content: string): ExtractedContent {
+  console.log('[Vega] Attempting extraction from content length:', content.length);
+
   // Pattern 1: Vega-Lite code block (preferred format)
   const vegaBlockMatch = content.match(/```vega-lite\s*([\s\S]*?)\s*```/);
   if (vegaBlockMatch) {
+    console.log('[Vega] Found vega-lite block, attempting parse...');
     try {
       const spec = JSON.parse(vegaBlockMatch[1]);
       if (isVegaLiteSpec(spec)) {
+        console.log('[Vega] ✅ Valid Vega-Lite spec extracted!', spec.$schema);
         return {
           text: content.replace(vegaBlockMatch[0], '').trim(),
           vegaSpec: spec,
         };
+      } else {
+        console.warn('[Vega] ❌ Parsed JSON but not a valid Vega-Lite spec');
       }
     } catch (err) {
-      console.error('Failed to parse vega-lite block:', err);
+      console.error('[Vega] ❌ Failed to parse vega-lite block:', err);
     }
+  } else {
+    console.log('[Vega] No vega-lite block found, trying json block...');
   }
 
   // Pattern 2: JSON code block

@@ -12,6 +12,8 @@ export function VegaChart({ spec, className }: VegaChartProps) {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  console.log('[VegaChart] Rendering with spec schema:', spec.$schema);
+
   // Generate a stable key from spec to force remount on spec change
   const specKey = useMemo(() => {
     return JSON.stringify(spec).substring(0, 100);
