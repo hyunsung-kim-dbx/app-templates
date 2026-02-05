@@ -40,14 +40,14 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         if (viewRef.current?.finalize) {
           try {
             viewRef.current.finalize();
-          } catch (e) {
+          } catch (_e) {
             // Ignore
           }
           viewRef.current = null;
         }
 
         // Remove previous vega container if exists
-        if (vegaDivRef.current && vegaDivRef.current.parentNode) {
+        if (vegaDivRef.current?.parentNode) {
           vegaDivRef.current.parentNode.removeChild(vegaDivRef.current);
           vegaDivRef.current = null;
         }
@@ -112,7 +112,7 @@ export function VegaChart({ spec, className }: VegaChartProps) {
       if (viewRef.current?.finalize) {
         try {
           viewRef.current.finalize();
-        } catch (e) {
+        } catch (_e) {
           // Ignore cleanup errors
         }
         viewRef.current = null;
@@ -120,10 +120,10 @@ export function VegaChart({ spec, className }: VegaChartProps) {
 
       // Remove the imperatively created vega container
       // This is safe because React never knew about this element
-      if (vegaDivRef.current && vegaDivRef.current.parentNode) {
+      if (vegaDivRef.current?.parentNode) {
         try {
           vegaDivRef.current.parentNode.removeChild(vegaDivRef.current);
-        } catch (e) {
+        } catch (_e) {
           // Ignore if already removed
         }
         vegaDivRef.current = null;

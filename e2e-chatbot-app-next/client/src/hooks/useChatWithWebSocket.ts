@@ -29,9 +29,9 @@ export function useChatWithWebSocket(options: UseChatWithWebSocketOptions) {
   const [error, setError] = useState<Error | null>(null);
 
   // Current streaming message state
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const [streamingText, setStreamingText] = useState<string>('');
-  const [streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
+  const [_streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [_streamingText, setStreamingText] = useState<string>('');
+  const [_streamingParts, setStreamingParts] = useState<MessagePart[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -59,7 +59,7 @@ export function useChatWithWebSocket(options: UseChatWithWebSocketOptions) {
           setStatus('streaming');
           break;
 
-        case 'message_start':
+        case 'message_start': {
           console.log('[WS Chat] Message started:', data.messageId);
           setStreamingMessageId(data.messageId);
           setStreamingText('');
@@ -75,6 +75,7 @@ export function useChatWithWebSocket(options: UseChatWithWebSocketOptions) {
           };
           setMessages(prev => [...prev, placeholderMessage]);
           break;
+        }
 
         case 'text_delta':
           setStreamingText(prev => {
@@ -98,7 +99,7 @@ export function useChatWithWebSocket(options: UseChatWithWebSocketOptions) {
           });
           break;
 
-        case 'tool_call_start':
+        case 'tool_call_start': {
           // Handle tool call streaming
           const toolPart: MessagePart = {
             type: 'dynamic-tool',
@@ -109,6 +110,7 @@ export function useChatWithWebSocket(options: UseChatWithWebSocketOptions) {
           };
           setStreamingParts(prev => [...prev, toolPart]);
           break;
+        }
 
         case 'tool_result':
           // Update tool call with result

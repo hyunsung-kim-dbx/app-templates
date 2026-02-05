@@ -178,7 +178,7 @@ export function extractVegaSpec(content: string): ExtractedContent {
         if (isVegaLiteSpec(spec)) {
           console.log('[Vega] ✅ Found valid spec via fallback extraction');
           return {
-            text: content.slice(0, pos).trim() + ' ' + content.slice(endPos).trim(),
+            text: `${content.slice(0, pos).trim()} ${content.slice(endPos).trim()}`,
             vegaSpec: spec,
           };
         }

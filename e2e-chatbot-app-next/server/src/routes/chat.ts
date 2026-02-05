@@ -231,10 +231,10 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     streamCache.clearActiveStream(id);
 
     // Track client disconnection for debugging
-    let clientDisconnected = false;
+    let _clientDisconnected = false;
     req.on('close', () => {
       if (!res.writableEnded) {
-        clientDisconnected = true;
+        _clientDisconnected = true;
         console.warn(`[Client Disconnect] Client closed connection for chat ${id} before stream completed`);
       }
     });

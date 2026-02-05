@@ -7,7 +7,7 @@ import express, {
   type NextFunction,
   type Express,
 } from 'express';
-import { createServer } from 'http';
+import { createServer } from 'node:http';
 import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
