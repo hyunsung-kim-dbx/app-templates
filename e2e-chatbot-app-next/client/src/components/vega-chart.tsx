@@ -28,8 +28,8 @@ export function VegaChart({ spec, className }: VegaChartProps) {
       console.log('[VegaChart] Setting container state...');
       setContainer(node);
     } else {
-      console.log('[VegaChart] Node is null, clearing container');
-      setContainer(null);
+      console.log('[VegaChart] Node is null (unmounting)');
+      // Don't clear container state here - let useEffect cleanup handle it
     }
   }, []);
 
@@ -110,24 +110,21 @@ export function VegaChart({ spec, className }: VegaChartProps) {
       vegaView = result;
     });
 
-    // Cleanup: finalize vega view and clear container
+    // Cleanup: finalize vega view ONLY (let React handle DOM)
     return () => {
       isMounted = false;
 
       if (vegaView && vegaView.finalize) {
         try {
           vegaView.finalize();
+          console.log('[VegaChart] Vega view finalized');
         } catch (e) {
           console.warn('[VegaChart] Cleanup error (ignored):', e);
         }
       }
 
-      // Clear container to prevent React conflicts
-      if (container) {
-        while (container.firstChild) {
-          container.removeChild(container.firstChild);
-        }
-      }
+      // Don't manually remove children - vega.finalize() + React cleanup is enough
+      // Manual removeChild causes conflicts with React's reconciliation
     };
   }, [container, spec]);
 
