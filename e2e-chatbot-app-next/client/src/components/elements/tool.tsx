@@ -17,8 +17,13 @@ import {
   WrenchIcon,
   XCircleIcon,
 } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
+import React, { type ComponentProps, type ReactNode } from 'react';
 import { CodeBlock } from './code-block';
+import {
+  CollapsibleTable,
+  CollapsibleJson,
+  isTabularData,
+} from '../collapsible-output';
 
 // Shared types - uses AI SDK's native tool states
 export type ToolState = ToolUIPart['state'];
@@ -135,6 +140,58 @@ export const ToolOutput = ({
     return null;
   }
 
+  // Try to parse output as structured data for better rendering
+  let parsedOutput: unknown = output;
+  let outputString = '';
+
+  if (typeof output === 'string') {
+    outputString = output;
+    try {
+      parsedOutput = JSON.parse(output);
+    } catch {
+      // Not JSON, keep as string
+      parsedOutput = output;
+    }
+  } else if (typeof output === 'object' && output !== null && !React.isValidElement(output)) {
+    // If output is already an object (not a React element), stringify it for display
+    outputString = JSON.stringify(output, null, 2);
+    parsedOutput = output;
+  }
+
+  // Check if output is tabular data (SQL results)
+  if (isTabularData(parsedOutput)) {
+    return (
+      <div className={cn('space-y-2 p-3', className)} {...props}>
+        <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          Result
+        </h4>
+        <div className="overflow-x-auto rounded-md bg-muted/50 p-2 text-foreground text-xs">
+          <CollapsibleTable data={parsedOutput} rowsPerPage={15} />
+        </div>
+      </div>
+    );
+  }
+
+  // Check if output is large JSON (more than 10 lines)
+  if (
+    outputString &&
+    typeof parsedOutput === 'object' &&
+    parsedOutput !== null &&
+    outputString.split('\n').length > 10
+  ) {
+    return (
+      <div className={cn('space-y-2 p-3', className)} {...props}>
+        <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+          Result
+        </h4>
+        <div className="overflow-x-auto rounded-md bg-muted/50 p-2 text-foreground text-xs">
+          <CollapsibleJson json={outputString} linesPerPage={10} />
+        </div>
+      </div>
+    );
+  }
+
+  // Default rendering for other outputs
   return (
     <div className={cn('space-y-2 p-3', className)} {...props}>
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
