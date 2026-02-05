@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node ../node_modules/tsx/dist/cli.mjs watch --inspect src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --packages=external",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --external:ai --external:express --external:cors --external:ws --external:zod --external:dotenv --external:pg --external:drizzle-orm --external:@ai-sdk/*",
     "start": "NODE_ENV=production node --env-file-if-exists ../.env dist/index.mjs"
   },
   "dependencies": {
