@@ -66,56 +66,46 @@ function PureMessages({
   useEffect(() => {
     if (status !== 'streaming') return;
 
-    // Track if user has manually scrolled up
-    let userScrolledUp = false;
-    let userInteracting = false;
+    // Track when user last interacted - pause auto-scroll for 2 seconds after interaction
+    let lastInteractionTime = 0;
+    const PAUSE_DURATION = 2000; // 2 seconds pause after user interaction
 
-    // Detect when user starts interacting (wheel/touch)
-    const handleWheelStart = () => {
-      userInteracting = true;
-    };
-
-    const handleTouchStart = () => {
-      userInteracting = true;
-    };
-
-    const handleScroll = () => {
-      const container = messagesContainerRef.current;
-      if (!container) return;
-
-      // If user is interacting and not at bottom, mark as scrolled up
-      if (userInteracting) {
-        const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 100;
-        if (!isAtBottom) {
-          userScrolledUp = true;
-        } else {
-          userScrolledUp = false;
-        }
-        userInteracting = false;
-      }
+    // Detect user interaction (wheel/touch)
+    const handleUserInteraction = () => {
+      lastInteractionTime = Date.now();
     };
 
     const container = messagesContainerRef.current;
-    container?.addEventListener('scroll', handleScroll);
-    container?.addEventListener('wheel', handleWheelStart, { passive: true });
-    container?.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container?.addEventListener('wheel', handleUserInteraction, { passive: true });
+    container?.addEventListener('touchstart', handleUserInteraction, { passive: true });
+    container?.addEventListener('mousedown', handleUserInteraction, { passive: true });
 
-    // Auto-scroll every 10ms during streaming
+    // Auto-scroll every 50ms during streaming (10ms was too aggressive)
     const scrollInterval = setInterval(() => {
       const container = messagesContainerRef.current;
-      if (container && !userScrolledUp && !userInteracting) {
+      if (!container) return;
+
+      // Skip auto-scroll if user interacted recently
+      const timeSinceInteraction = Date.now() - lastInteractionTime;
+      if (timeSinceInteraction < PAUSE_DURATION) {
+        return;
+      }
+
+      // Only scroll if not already at bottom (avoid unnecessary scroll calls)
+      const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
+      if (!isNearBottom) {
         container.scrollTo({
           top: container.scrollHeight,
           behavior: 'instant',
         });
       }
-    }, 10);
+    }, 50);
 
     return () => {
       clearInterval(scrollInterval);
-      container?.removeEventListener('scroll', handleScroll);
-      container?.removeEventListener('wheel', handleWheelStart);
-      container?.removeEventListener('touchstart', handleTouchStart);
+      container?.removeEventListener('wheel', handleUserInteraction);
+      container?.removeEventListener('touchstart', handleUserInteraction);
+      container?.removeEventListener('mousedown', handleUserInteraction);
     };
   }, [status, messagesContainerRef]);
 
