@@ -63,14 +63,15 @@ export function generateUUID(): string {
 }
 
 export function sanitizeText(text: string) {
+  // Log all calls to see what's coming through
+  if (text.includes('agent-') || text.includes('kpi-')) {
+    console.log('[sanitizeText] INPUT:', text.substring(0, 200));
+  }
+
   let result = text.replace('<has_function_call>', '');
 
   // Remove agent names that appear immediately before tables
   // Pattern: kebab-case name (like agent-krafton-meta) directly followed by |
-  const agentPattern = /[a-z][a-z0-9]*(?:-[a-z0-9]+)+\|/gi;
-  if (agentPattern.test(result)) {
-    console.log('[sanitizeText] BEFORE:', result.substring(0, 100));
-  }
   result = result.replace(/[a-z][a-z0-9]*(?:-[a-z0-9]+)+\|/gi, '|');
 
   return result;
