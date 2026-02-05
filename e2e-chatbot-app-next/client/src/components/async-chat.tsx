@@ -49,7 +49,9 @@ export function AsyncChat({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [selectedChatModel, setSelectedChatModel] = useState<string>(initialChatModel);
 
-  const isNewChat = initialMessages.length === 0;
+  // Ensure initialMessages is always an array
+  const safeInitialMessages = initialMessages ?? [];
+  const isNewChat = safeInitialMessages.length === 0;
   const didFetchHistoryOnNewChat = useRef(false);
 
   const fetchChatHistory = useCallback(() => {
@@ -65,7 +67,7 @@ export function AsyncChat({
     stop,
   } = useAsyncChat({
     chatId: id,
-    initialMessages,
+    initialMessages: safeInitialMessages,
     selectedChatModel,
     selectedVisibilityType: visibilityType,
     onFinish: (message) => {

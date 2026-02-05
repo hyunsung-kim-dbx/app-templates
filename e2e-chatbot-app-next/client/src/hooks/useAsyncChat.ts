@@ -47,7 +47,9 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
     pollingInterval = 2000, // Poll every 2 seconds
   } = options;
 
-  const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
+  // Ensure initialMessages is always an array
+  const safeInitialMessages = initialMessages ?? [];
+  const [messages, setMessages] = useState<ChatMessage[]>(safeInitialMessages);
   const [status, setStatus] = useState<ChatStatus>('idle');
   const [error, setError] = useState<Error | null>(null);
   const [currentJobId, setCurrentJobId] = useState<string | null>(null);
@@ -320,8 +322,8 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
 
   // Update messages when initialMessages change
   useEffect(() => {
-    setMessages(initialMessages);
-  }, [initialMessages]);
+    setMessages(safeInitialMessages);
+  }, [safeInitialMessages]);
 
   return {
     messages,
