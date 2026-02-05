@@ -1,8 +1,10 @@
 import { useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Chat } from '@/components/chat';
+import { AsyncChat } from '@/components/async-chat';
 import { useSession } from '@/contexts/SessionContext';
 import { useChatData } from '@/hooks/useChatData';
+import { useAppConfig } from '@/contexts/AppConfigContext';
 import type { LanguageModelUsage } from 'ai';
 import type { LanguageModelV3Usage } from '@ai-sdk/provider';
 
@@ -28,6 +30,7 @@ function fromV3Usage(usage: LanguageModelV3Usage | null | undefined): LanguageMo
 export default function ChatPage() {
   const { id } = useParams<{ id: string }>();
   const { session } = useSession();
+  const { useAsyncPolling } = useAppConfig();
   const [modelId, setModelId] = useState('chat-model');
 
   // Use SWR hook for data fetching with automatic caching and deduplication
@@ -72,8 +75,10 @@ export default function ChatPage() {
 
   // Force React to remount the Chat component when switching threads
   // This ensures UI updates immediately when id changes
+  const ChatComponent = useAsyncPolling ? AsyncChat : Chat;
+
   return (
-    <Chat
+    <ChatComponent
       key={chat.id}
       id={chat.id}
       initialMessages={messages}

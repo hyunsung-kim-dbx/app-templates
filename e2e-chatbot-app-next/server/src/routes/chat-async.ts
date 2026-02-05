@@ -9,19 +9,32 @@ import {
   type Response,
   type Router as RouterType,
 } from 'express';
-import { streamText, convertToModelMessages, type LanguageModelUsage } from 'ai';
+import {
+  streamText,
+  convertToModelMessages,
+  generateText,
+  type LanguageModelUsage,
+} from 'ai';
 import type { LanguageModelV3Usage } from '@ai-sdk/provider';
 import {
   authMiddleware,
   requireAuth,
-  requireChatAccess,
 } from '../middleware/auth';
-import { saveMessages, updateChatLastContextById } from '@chat-template/db';
+import {
+  saveChat,
+  saveMessages,
+  updateChatLastContextById,
+  isDatabaseAvailable,
+} from '@chat-template/db';
 import {
   type ChatMessage,
+  type VisibilityType,
+  checkChatAccess,
   generateUUID,
   myProvider,
+  truncateMessages,
 } from '@chat-template/core';
+import { ChatSDKError } from '@chat-template/core/errors';
 import { setRequestContext } from '@chat-template/ai-sdk-providers';
 import {
   CONTEXT_HEADER_CONVERSATION_ID,
@@ -66,7 +79,17 @@ chatAsyncRouter.post(
   '/start',
   requireAuth,
   async (req: Request, res: Response) => {
-    const { id: chatId, messages, selectedChatModel } = req.body;
+    const dbAvailable = isDatabaseAvailable();
+    if (!dbAvailable) {
+      console.log('[AsyncChat] Running in ephemeral mode - no persistence');
+    }
+
+    const {
+      id: chatId,
+      messages,
+      selectedChatModel,
+      selectedVisibilityType = 'private',
+    } = req.body;
 
     if (!chatId || !messages || !selectedChatModel) {
       return res.status(400).json({
@@ -74,7 +97,71 @@ chatAsyncRouter.post(
       });
     }
 
-    const session = req.session!;
+    const session = req.session;
+    if (!session) {
+      const error = new ChatSDKError('unauthorized:chat');
+      const response = error.toResponse();
+      return res.status(response.status).json(response.json);
+    }
+
+    // Check chat access
+    const { chat, allowed, reason } = await checkChatAccess(
+      chatId,
+      session.user.id,
+    );
+
+    if (reason !== 'not_found' && !allowed) {
+      const error = new ChatSDKError('forbidden:chat');
+      const response = error.toResponse();
+      return res.status(response.status).json(response.json);
+    }
+
+    // Get the last user message (the one being sent now)
+    const userMessage = messages.length > 0
+      ? messages[messages.length - 1]
+      : null;
+
+    // Create chat if it doesn't exist
+    if (!chat && dbAvailable && userMessage) {
+      try {
+        const title = await generateTitleFromUserMessage({ message: userMessage });
+        await saveChat({
+          id: chatId,
+          userId: session.user.id,
+          title,
+          visibility: selectedVisibilityType as VisibilityType,
+        });
+        console.log('[AsyncChat] Created new chat:', chatId);
+      } catch (error) {
+        console.error('[AsyncChat] Failed to create chat:', error);
+        return res.status(500).json({ error: 'Failed to create chat' });
+      }
+    } else if (chat && chat.userId !== session.user.id) {
+      const error = new ChatSDKError('forbidden:chat');
+      const response = error.toResponse();
+      return res.status(response.status).json(response.json);
+    }
+
+    // Save user message to database
+    if (dbAvailable && userMessage && userMessage.role === 'user') {
+      try {
+        await saveMessages({
+          messages: [{
+            chatId,
+            id: userMessage.id,
+            role: 'user',
+            parts: userMessage.parts,
+            attachments: userMessage.attachments || [],
+            createdAt: userMessage.createdAt ? new Date(userMessage.createdAt) : new Date(),
+          }],
+        });
+        console.log('[AsyncChat] Saved user message:', userMessage.id);
+      } catch (error) {
+        console.error('[AsyncChat] Failed to save user message:', error);
+        // Continue anyway - don't block on this
+      }
+    }
+
     const jobId = generateUUID();
 
     // Create job immediately
@@ -140,6 +227,38 @@ chatAsyncRouter.get(
 );
 
 /**
+ * POST /api/chat-async/job/:jobId/cancel
+ * Cancel a running job
+ */
+chatAsyncRouter.post(
+  '/job/:jobId/cancel',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const { jobId } = req.params;
+
+    const job = getJob(jobId);
+
+    if (!job) {
+      return res.status(404).json({
+        error: 'Job not found',
+        jobId,
+      });
+    }
+
+    // Mark job as cancelled (same as error state)
+    if (job.status === 'pending' || job.status === 'streaming') {
+      failJob(jobId, 'Cancelled by user');
+      console.log('[AsyncChat] Job cancelled:', jobId);
+    }
+
+    res.json({
+      jobId: job.id,
+      status: 'cancelled',
+    });
+  }
+);
+
+/**
  * Background chat processing
  */
 async function processChat(params: {
@@ -176,6 +295,7 @@ async function processChat(params: {
     });
   }
 
+  const dbAvailable = isDatabaseAvailable();
   let finalUsage: LanguageModelUsage | undefined;
   let finishReason: string | undefined;
 
@@ -185,9 +305,12 @@ async function processChat(params: {
     // Update job status to streaming
     updateJobStatus(jobId, 'streaming');
 
+    // Truncate messages to prevent exceeding 4MB API request limit
+    const truncatedMessages = truncateMessages(uiMessages);
+
     const result = streamText({
       model,
-      messages: await convertToModelMessages(uiMessages),
+      messages: await convertToModelMessages(truncatedMessages),
       headers: {
         [CONTEXT_HEADER_CONVERSATION_ID]: chatId,
         [CONTEXT_HEADER_USER_ID]: userEmail ?? userId,
@@ -216,31 +339,41 @@ async function processChat(params: {
       parts.push({ type: 'text', text: fullText });
     }
 
-    // Save message to database
-    if (parts.length > 0) {
-      await saveMessages({
-        messages: [{
-          id: messageId,
-          role: 'assistant',
-          parts,
-          createdAt: new Date(),
-          attachments: [],
-          chatId,
-        }],
-      });
-
-      if (finalUsage) {
-        await updateChatLastContextById({
-          chatId,
-          context: toV3Usage(finalUsage),
+    // Save message to database (only if DB available)
+    if (dbAvailable && parts.length > 0) {
+      try {
+        await saveMessages({
+          messages: [{
+            id: messageId,
+            role: 'assistant',
+            parts,
+            createdAt: new Date(),
+            attachments: [],
+            chatId,
+          }],
         });
-      }
 
-      console.log('[AsyncChat] Message saved:', messageId);
+        if (finalUsage) {
+          await updateChatLastContextById({
+            chatId,
+            context: toV3Usage(finalUsage),
+          });
+        }
+
+        console.log('[AsyncChat] Message saved:', messageId);
+      } catch (dbError) {
+        console.error('[AsyncChat] Failed to save message to DB:', dbError);
+        // Continue - job still completed successfully
+      }
     }
 
     // Mark job as completed
     completeJob(jobId, messageId, finishReason || 'stop');
+
+    // Log token usage
+    if (finalUsage) {
+      console.log(`[AsyncChat] Tokens - Input: ${finalUsage.inputTokens}, Output: ${finalUsage.outputTokens}, Finish: ${finishReason}`);
+    }
 
     if (finishReason === 'length') {
       console.warn('[AsyncChat] Response truncated due to token limit');
@@ -249,5 +382,34 @@ async function processChat(params: {
   } catch (error) {
     console.error('[AsyncChat] Processing error:', error);
     failJob(jobId, error instanceof Error ? error.message : 'Chat processing failed');
+  }
+}
+
+/**
+ * Generate a title from user message
+ */
+async function generateTitleFromUserMessage({
+  message,
+}: {
+  message: ChatMessage;
+}): Promise<string> {
+  try {
+    const model = await myProvider.languageModel('title-model');
+    const { text: title } = await generateText({
+      model,
+      system: `\n
+      - you will generate a short title based on the first message a user begins a conversation with
+      - ensure it is not more than 80 characters long
+      - the title should be a summary of the user's message
+      - do not use quotes or colons. do not include other expository content ("I'll help...")`,
+      prompt: JSON.stringify(message),
+    });
+    return title;
+  } catch (error) {
+    console.error('[AsyncChat] Failed to generate title:', error);
+    // Return a default title if generation fails
+    const textPart = message.parts?.find((p: any) => p.type === 'text');
+    const text = textPart && 'text' in textPart ? textPart.text : '';
+    return text.slice(0, 50) || 'New Chat';
   }
 }

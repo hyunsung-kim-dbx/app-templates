@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Chat } from '@/components/chat';
+import { AsyncChat } from '@/components/async-chat';
 import { generateUUID } from '@/lib/utils';
 import { useSession } from '@/contexts/SessionContext';
 import { useLocation } from 'react-router-dom';
+import { useAppConfig } from '@/contexts/AppConfigContext';
 
 export default function NewChatPage() {
   const { session } = useSession();
+  const { useAsyncPolling } = useAppConfig();
   const [id, setId] = useState(() => generateUUID());
   const [modelId, setModelId] = useState('chat-model');
 
@@ -32,8 +35,10 @@ export default function NewChatPage() {
   // Note: query param handling can be added here if needed
   // const query = searchParams.get('query');
 
+  const ChatComponent = useAsyncPolling ? AsyncChat : Chat;
+
   return (
-    <Chat
+    <ChatComponent
       key={id}
       id={id}
       initialMessages={[]}

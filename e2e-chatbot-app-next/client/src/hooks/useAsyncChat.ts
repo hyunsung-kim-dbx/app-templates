@@ -18,6 +18,7 @@ interface UseAsyncChatOptions {
   chatId: string;
   initialMessages: ChatMessage[];
   selectedChatModel: string;
+  selectedVisibilityType?: 'private' | 'public';
   onFinish?: (message: ChatMessage) => void;
   onError?: (error: Error) => void;
   pollingInterval?: number;
@@ -34,6 +35,7 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
     chatId,
     initialMessages,
     selectedChatModel,
+    selectedVisibilityType = 'private',
     onFinish,
     onError,
     pollingInterval = 2000, // Poll every 2 seconds
@@ -47,6 +49,8 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
 
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const lastPartsReceivedRef = useRef<number>(0);
+  const lastUpdateTimeRef = useRef<number>(Date.now());
+  const STALE_JOB_TIMEOUT_MS = 120000; // 2 minutes without updates = stale
 
   // Stop polling
   const stopPolling = useCallback(() => {
@@ -82,6 +86,7 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
   const startPolling = useCallback((jobId: string) => {
     stopPolling();
     lastPartsReceivedRef.current = 0;
+    lastUpdateTimeRef.current = Date.now();
 
     console.log('[AsyncChat] Starting polling for job:', jobId);
 
@@ -89,8 +94,22 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
       const jobStatus = await pollJobStatus(jobId);
 
       if (!jobStatus) {
+        // Check for stale job (no response for too long)
+        const timeSinceLastUpdate = Date.now() - lastUpdateTimeRef.current;
+        if (timeSinceLastUpdate > STALE_JOB_TIMEOUT_MS) {
+          console.error('[AsyncChat] Job appears stale, stopping polling:', jobId);
+          stopPolling();
+          setStatus('error');
+          setCurrentJobId(null);
+          const err = new Error('Request timed out. Please try again.');
+          setError(err);
+          onError?.(err);
+        }
         return;
       }
+
+      // Update last update time
+      lastUpdateTimeRef.current = Date.now();
 
       // Update partial text if new content
       if (jobStatus.partsReceived > lastPartsReceivedRef.current) {
@@ -206,11 +225,13 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
           id: chatId,
           messages: updatedMessages,
           selectedChatModel,
+          selectedVisibilityType,
         }),
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to start chat: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Failed to start chat: ${response.status}`);
       }
 
       const { jobId } = await response.json();
@@ -232,15 +253,37 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
       // Remove placeholder message
       setMessages(updatedMessages);
     }
-  }, [chatId, messages, selectedChatModel, startPolling, onError]);
+  }, [chatId, messages, selectedChatModel, selectedVisibilityType, startPolling, onError]);
 
   // Stop/cancel current job
-  const stop = useCallback(() => {
+  const stop = useCallback(async () => {
     stopPolling();
+
+    // Cancel job on server
+    if (currentJobId) {
+      try {
+        await fetch(`/api/chat-async/job/${currentJobId}/cancel`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        console.log('[AsyncChat] Cancelled job:', currentJobId);
+      } catch (err) {
+        console.warn('[AsyncChat] Failed to cancel job on server:', err);
+      }
+    }
+
     setStatus('idle');
     setCurrentJobId(null);
-    // Note: Server-side job will continue, but we stop tracking it
-  }, [stopPolling]);
+
+    // Remove the streaming placeholder message
+    setMessages(prev => {
+      const lastIdx = prev.length - 1;
+      if (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && prev[lastIdx].id.includes('-streaming')) {
+        return prev.slice(0, lastIdx);
+      }
+      return prev;
+    });
+  }, [stopPolling, currentJobId]);
 
   // Clear error
   const clearError = useCallback(() => {
