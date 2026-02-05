@@ -262,82 +262,50 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     /**
      * We manually create the stream to have access to the stream writer.
      * This allows us to inject custom stream parts like data-error.
-     *
-     * Size monitoring: We track response size via side effects without
-     * intercepting the stream, allowing proper part collection.
      */
-    let totalCharsStreamed = 0;
-    let lastLoggedSize = 0;
-    const shouldTruncate = { value: false };
-
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        // Wrap the original stream to monitor size via side effects
-        const originalStream = result.toUIMessageStream({
-          originalMessages: uiMessages,
-          generateMessageId: generateUUID,
-          sendReasoning: true,
-          sendSources: true,
-          onError: (error) => {
-            console.error('Stream error:', error);
+        writer.merge(
+          result.toUIMessageStream({
+            originalMessages: uiMessages,
+            generateMessageId: generateUUID,
+            sendReasoning: true,
+            sendSources: true,
+            onError: (error) => {
+              console.error('Stream error:', error);
 
-            const errorMessage =
-              error instanceof Error ? error.message : JSON.stringify(error);
+              const errorMessage =
+                error instanceof Error ? error.message : JSON.stringify(error);
 
-            writer.write({ type: 'data-error', data: errorMessage });
+              writer.write({ type: 'data-error', data: errorMessage });
 
-            return errorMessage;
-          },
-        });
-
-        // Monitor and optionally truncate large responses
-        const monitoredStream = (async function* () {
-          for await (const part of originalStream) {
-            // Track size for monitoring
-            if (part.type === 'text' && typeof part.text === 'string') {
-              totalCharsStreamed += part.text.length;
-
-              // Log progress every 50K chars
-              if (totalCharsStreamed - lastLoggedSize > 50000) {
-                console.log(`[Streaming] ${Math.floor(totalCharsStreamed / 1000)}K chars sent`);
-                lastLoggedSize = totalCharsStreamed;
-              }
-
-              // Check if we should truncate
-              const maxSize = STREAM_CONFIG.MAX_RESPONSE_SIZE * STREAM_CONFIG.MAX_MESSAGE_CHUNKS;
-              if (!shouldTruncate.value && totalCharsStreamed > maxSize) {
-                shouldTruncate.value = true;
-                console.warn(`[Streaming] Response size ${totalCharsStreamed} exceeds limit ${maxSize}. Truncating.`);
-
-                // Yield truncation message
-                yield {
-                  type: 'text',
-                  text: '\n\n_[Response truncated - output exceeds size limit. Please ask for a more concise response.]_',
-                };
-
-                // Stop processing further parts
-                return;
-              }
-            }
-
-            // Always yield the part (no modification)
-            yield part;
-          }
-        })();
-
-        // Merge the monitored stream
-        writer.merge(monitoredStream);
+              return errorMessage;
+            },
+          }),
+        );
       },
       onFinish: async ({ responseMessage }) => {
-        // Log final stats
-        if (totalCharsStreamed > 0) {
-          console.log(`[Streaming] Completed. Total size: ${Math.floor(totalCharsStreamed / 1000)}K chars. Parts collected: ${responseMessage.parts.length}. Truncated: ${shouldTruncate.value}`);
-        }
-
         console.log(
           'Finished message stream! Saving message...',
-          JSON.stringify(responseMessage, null, 2),
+          `ID: ${responseMessage.id}, Parts: ${responseMessage.parts.length}, Role: ${responseMessage.role}`,
         );
+
+        // Size monitoring at save time (post-facto)
+        const totalSize = responseMessage.parts
+          .filter(p => p.type === 'text')
+          .reduce((sum, p) => sum + (p.text?.length || 0), 0);
+
+        if (totalSize > STREAM_CONFIG.MAX_RESPONSE_SIZE) {
+          console.warn(`[Size Warning] Response ${responseMessage.id} is ${Math.floor(totalSize / 1000)}K chars (limit: ${Math.floor(STREAM_CONFIG.MAX_RESPONSE_SIZE / 1000)}K)`);
+        }
+
+        // Validate parts before saving
+        if (responseMessage.parts.length === 0) {
+          console.error('[CRITICAL] responseMessage has no parts! This will cause database save to fail.');
+          console.error('Message details:', JSON.stringify(responseMessage, null, 2));
+          throw new Error('Cannot save message with empty parts array');
+        }
+
         await saveMessages({
           messages: [
             {
