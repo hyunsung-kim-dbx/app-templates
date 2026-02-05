@@ -63,23 +63,7 @@ export function generateUUID(): string {
 }
 
 export function sanitizeText(text: string) {
-  // Remove internal markers
-  let result = text.replace('<has_function_call>', '');
-
-  // Detect agent/step names (kebab-case patterns like "agent-krafton-meta", "kpi-social-poc")
-  // Only match at start of line or after non-table characters
-  // Avoid matching inside markdown tables (patterns like |name|)
-  result = result.replace(
-    /^([a-z]+-[a-z]+(?:-[a-z]+)*)\s*(\||#|\u3131-\uD79D)/gim,
-    (match, agentName, after) => {
-      return `**🤖 ${agentName}**\n\n${after}`;
-    }
-  );
-
-  // Clean up excessive newlines
-  result = result.replace(/\n{3,}/g, '\n\n');
-
-  return result;
+  return text.replace('<has_function_call>', '');
 }
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
