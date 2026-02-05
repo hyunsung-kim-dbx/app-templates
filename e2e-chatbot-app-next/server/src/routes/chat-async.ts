@@ -391,6 +391,24 @@ async function processChat(params: {
     // Wait for completion
     await result.response;
 
+    // Debug: Log accumulated content
+    console.log(`[AsyncChat] Stream finished - fullText length: ${fullText.length}, reasoning length: ${reasoningText.length}, toolCalls: ${toolCalls.size}, sources: ${sources.length}`);
+    if (fullText.length > 0) {
+      console.log(`[AsyncChat] fullText preview: ${fullText.slice(0, 200)}`);
+    }
+
+    // Try to get text from result.text as fallback (non-streaming accumulator)
+    try {
+      const resultText = await result.text;
+      console.log(`[AsyncChat] result.text length: ${resultText?.length || 0}`);
+      if (resultText && !fullText) {
+        console.log(`[AsyncChat] Using result.text as fallback`);
+        fullText = resultText;
+      }
+    } catch (e) {
+      console.log(`[AsyncChat] result.text not available: ${e}`);
+    }
+
     // Build message parts in correct order
     const parts: JobMessagePart[] = [];
 
