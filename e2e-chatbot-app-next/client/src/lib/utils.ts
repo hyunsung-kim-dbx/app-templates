@@ -63,7 +63,13 @@ export function generateUUID(): string {
 }
 
 export function sanitizeText(text: string) {
-  return text.replace('<has_function_call>', '');
+  let result = text.replace('<has_function_call>', '');
+
+  // Remove agent names that appear immediately before tables
+  // Pattern: kebab-case name (like agent-sungil-kpi) directly followed by | (table start)
+  result = result.replace(/[a-z][a-z0-9]*(?:-[a-z0-9]+)+\|(\s*\|)/gi, '|$1');
+
+  return result;
 }
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
