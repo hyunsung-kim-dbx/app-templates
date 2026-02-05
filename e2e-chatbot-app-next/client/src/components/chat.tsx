@@ -105,7 +105,8 @@ export function Chat({
     messages: initialMessages,
     experimental_throttle: 100,
     generateId: generateUUID,
-    resume: id !== undefined && initialMessages.length > 0, // Enable automatic stream resumption
+    // DISABLED: resume feature causes "Cannot read properties of undefined (reading 'state')" errors
+    // resume: id !== undefined && initialMessages.length > 0,
     transport: new ChatTransport({
       onStreamPart: (part) => {
         console.log('[ChatTransport] Stream part received:', part.type, part);
@@ -232,7 +233,14 @@ export function Chat({
           resumeAttemptCountRef.current + 1,
         );
         resumeAttemptCountRef.current++;
-        resumeStream();
+        try {
+          resumeStream();
+        } catch (err) {
+          console.error('[Chat onFinish] Failed to resume stream:', err);
+          // If resume fails, just finish normally
+          setStreamCursor(0);
+          fetchChatHistory();
+        }
       } else {
         // Stream completed normally or we've exhausted resume attempts
         if (resumeAttemptCountRef.current >= maxResumeAttempts) {
