@@ -31,8 +31,8 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         setError(null);
         setIsLoading(true);
 
-        // Clear previous chart
-        container.innerHTML = '';
+        // Don't clear innerHTML - vega-embed will handle it
+        // Clearing causes React to lose track of DOM nodes
 
         await embed(container, spec, {
           actions: {
