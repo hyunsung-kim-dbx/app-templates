@@ -62,7 +62,17 @@ function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
         if (isToolCallPart(part)) {
           const unifiedId = part.id ?? part.toolCallId ?? part.call_id;
           const unifiedName = part.name ?? part.toolName;
-          const unifiedArgs = part.args ?? part.input ?? (typeof part.arguments === 'string' ? JSON.parse(part.arguments) : part.arguments);
+          let unifiedArgs = part.args ?? part.input;
+          // Safely parse arguments string if needed
+          if (!unifiedArgs && typeof part.arguments === 'string') {
+            try {
+              unifiedArgs = JSON.parse(part.arguments);
+            } catch {
+              unifiedArgs = part.arguments;
+            }
+          } else if (!unifiedArgs) {
+            unifiedArgs = part.arguments ?? {};
+          }
           return {
             ...part,
             // Set ALL ID field names for compatibility with different systems

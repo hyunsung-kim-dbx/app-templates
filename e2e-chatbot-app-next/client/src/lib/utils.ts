@@ -67,14 +67,12 @@ export function sanitizeText(text: string) {
   let result = text.replace('<has_function_call>', '');
 
   // Detect agent/step names (kebab-case patterns like "agent-krafton-meta", "kpi-social-poc")
-  // and add visual breaks around them
-  // Pattern: word-word or word-word-word at start or after |
+  // Only match at start of line or after non-table characters
+  // Avoid matching inside markdown tables (patterns like |name|)
   result = result.replace(
-    /(\|)?([a-z]+-[a-z]+(?:-[a-z]+)*)(\||\s*[#\u3131-\uD79D])/gi,
-    (match, beforePipe, agentName, after) => {
-      const prefix = beforePipe ? '|\n\n' : '';
-      const suffix = after === '|' ? '\n\n|' : `\n\n${after}`;
-      return `${prefix}**🤖 ${agentName}**${suffix}`;
+    /^([a-z]+-[a-z]+(?:-[a-z]+)*)\s*(\||#|\u3131-\uD79D)/gim,
+    (match, agentName, after) => {
+      return `**🤖 ${agentName}**\n\n${after}`;
     }
   );
 

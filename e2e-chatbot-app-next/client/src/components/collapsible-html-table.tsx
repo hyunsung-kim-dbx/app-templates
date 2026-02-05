@@ -93,7 +93,7 @@ export function CollapsibleHtmlTable({
         <table
           ref={tableRef}
           {...props}
-          className="w-full border-collapse text-left text-sm"
+          className="w-full border-collapse text-left text-sm [&_td]:max-w-[300px] [&_td]:truncate [&_td]:p-2 [&_th]:max-w-[300px] [&_th]:truncate [&_th]:p-2 [&_td]:hover:whitespace-normal [&_td]:hover:overflow-visible"
         >
           {children}
         </table>
