@@ -111,6 +111,30 @@ function shouldInjectContext(): boolean {
   return shouldInjectContextForEndpoint(endpointTask);
 }
 
+/**
+ * Fix function_call items to have both 'id' and 'call_id' fields.
+ * The Databricks endpoint requires both, but the AI SDK provider only sets 'call_id'.
+ */
+function fixFunctionCallIds(obj: any): any {
+  if (!obj || typeof obj !== 'object') return obj;
+
+  if (Array.isArray(obj)) {
+    return obj.map(fixFunctionCallIds);
+  }
+
+  // Fix function_call items: ensure 'id' is set from 'call_id'
+  if (obj.type === 'function_call' && obj.call_id && !obj.id) {
+    return { ...obj, id: obj.call_id };
+  }
+
+  // Recursively process nested objects
+  const fixed: any = {};
+  for (const key of Object.keys(obj)) {
+    fixed[key] = fixFunctionCallIds(obj[key]);
+  }
+  return fixed;
+}
+
 // Custom fetch function to transform Databricks responses to OpenAI format
 export const databricksFetch: typeof fetch = async (input, init) => {
   const url = input.toString();
@@ -124,6 +148,17 @@ export const databricksFetch: typeof fetch = async (input, init) => {
   headers.delete(CONTEXT_HEADER_CONVERSATION_ID);
   headers.delete(CONTEXT_HEADER_USER_ID);
   requestInit = { ...requestInit, headers };
+
+  // Fix function_call items in request body to have 'id' field
+  if (requestInit?.body && typeof requestInit.body === 'string') {
+    try {
+      const body = JSON.parse(requestInit.body);
+      const fixedBody = fixFunctionCallIds(body);
+      requestInit = { ...requestInit, body: JSON.stringify(fixedBody) };
+    } catch {
+      // If JSON parsing fails, pass through unchanged
+    }
+  }
 
   // Inject context into request body if appropriate
   if (conversationId && userId && requestInit?.body && typeof requestInit.body === 'string') {
