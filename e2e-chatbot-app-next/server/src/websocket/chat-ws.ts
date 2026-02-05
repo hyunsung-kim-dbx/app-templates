@@ -65,8 +65,28 @@ export function initializeWebSocketServer(server: Server): WebSocketServer {
 
   console.log('[WebSocket] Server initialized on /ws/chat');
 
+  // Ping all clients every 25 seconds to keep connections alive through proxy
+  const PING_INTERVAL_MS = 25000;
+  const pingInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      }
+    });
+  }, PING_INTERVAL_MS);
+
+  wss.on('close', () => {
+    clearInterval(pingInterval);
+  });
+
   wss.on('connection', (ws: AuthenticatedWebSocket, req: IncomingMessage) => {
     console.log('[WebSocket] New connection');
+
+    // Track last pong to detect dead connections
+    let lastPong = Date.now();
+    ws.on('pong', () => {
+      lastPong = Date.now();
+    });
 
     // Try to authenticate from headers (for initial connection)
     authenticateFromHeaders(ws, req);
@@ -183,6 +203,17 @@ async function handleChatMessage(
 
   let finalUsage: LanguageModelUsage | undefined;
   let finishReason: string | undefined;
+
+  // Heartbeat to keep connection alive during long operations
+  const HEARTBEAT_INTERVAL_MS = 15000; // 15 seconds
+  let heartbeatCount = 0;
+  const heartbeatInterval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      heartbeatCount++;
+      ws.send(JSON.stringify({ type: 'heartbeat', count: heartbeatCount }));
+      console.log(`[WebSocket] Heartbeat #${heartbeatCount} for chat ${chatId}`);
+    }
+  }, HEARTBEAT_INTERVAL_MS);
 
   try {
     const model = await myProvider.languageModel(selectedChatModel);
@@ -310,5 +341,9 @@ async function handleChatMessage(
       error: error instanceof Error ? error.message : 'Chat failed',
       chatId,
     }));
+  } finally {
+    // Always clean up heartbeat
+    clearInterval(heartbeatInterval);
+    console.log(`[WebSocket] Heartbeat stopped after ${heartbeatCount} beats for chat ${chatId}`);
   }
 }
