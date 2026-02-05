@@ -62,20 +62,48 @@ function PureMessages({
     }
   }, [status, messagesContainerRef]);
 
-  // Continuous scroll during streaming when user is at bottom
+  // Continuous auto-scroll during streaming using interval
   useEffect(() => {
-    if (status === 'streaming' && isAtBottom) {
-      requestAnimationFrame(() => {
-        const container = messagesContainerRef.current;
-        if (container) {
-          container.scrollTo({
-            top: container.scrollHeight,
-            behavior: 'instant',
-          });
-        }
-      });
-    }
-  }, [status, safeMessages, isAtBottom, messagesContainerRef]);
+    if (status !== 'streaming') return;
+
+    // Track if user has manually scrolled up
+    let userScrolledUp = false;
+    let lastScrollTop = 0;
+
+    const handleScroll = () => {
+      const container = messagesContainerRef.current;
+      if (!container) return;
+
+      // If user scrolled up (scrollTop decreased), stop auto-scrolling
+      if (container.scrollTop < lastScrollTop - 50) {
+        userScrolledUp = true;
+      }
+      // If user scrolled to bottom, resume auto-scrolling
+      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
+        userScrolledUp = false;
+      }
+      lastScrollTop = container.scrollTop;
+    };
+
+    const container = messagesContainerRef.current;
+    container?.addEventListener('scroll', handleScroll);
+
+    // Auto-scroll every 50ms during streaming
+    const scrollInterval = setInterval(() => {
+      const container = messagesContainerRef.current;
+      if (container && !userScrolledUp) {
+        container.scrollTo({
+          top: container.scrollHeight,
+          behavior: 'instant',
+        });
+      }
+    }, 50);
+
+    return () => {
+      clearInterval(scrollInterval);
+      container?.removeEventListener('scroll', handleScroll);
+    };
+  }, [status, messagesContainerRef]);
 
   return (
     <div
