@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import embed, { type VisualizationSpec } from 'vega-embed';
 import { cn } from '@/lib/utils';
 
@@ -11,7 +11,11 @@ export function VegaChart({ spec, className }: VegaChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const renderInProgressRef = useRef(false);
+
+  // Generate a stable key from spec to force remount on spec change
+  const specKey = useMemo(() => {
+    return JSON.stringify(spec).substring(0, 100);
+  }, [spec]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -20,21 +24,15 @@ export function VegaChart({ spec, className }: VegaChartProps) {
       return;
     }
 
-    // Prevent multiple concurrent renders
-    if (renderInProgressRef.current) {
-      return;
-    }
+    let isMounted = true;
 
     const renderChart = async () => {
-      renderInProgressRef.current = true;
       try {
         setError(null);
         setIsLoading(true);
 
-        // Don't clear innerHTML - vega-embed will handle it
-        // Clearing causes React to lose track of DOM nodes
-
-        await embed(container, spec, {
+        // Vega-embed handles DOM updates automatically
+        const result = await embed(container, spec, {
           actions: {
             export: true,
             source: false,
@@ -42,29 +40,42 @@ export function VegaChart({ spec, className }: VegaChartProps) {
             editor: false,
           },
           renderer: 'svg',
-          // Suppress version mismatch warnings (v5 specs work fine with v6)
-          logLevel: 2, // ERROR level only (suppresses WARN)
+          logLevel: 2, // Suppress version warnings
         });
 
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
+
+        // Return cleanup function from vega-embed
+        return result;
       } catch (err) {
         console.error('Vega render error:', err);
-        console.error('Failed spec:', spec);
-        setError(
-          err instanceof Error ? err.message : 'Failed to render chart',
-        );
-        setIsLoading(false);
-      } finally {
-        renderInProgressRef.current = false;
+        if (isMounted) {
+          setError(
+            err instanceof Error ? err.message : 'Failed to render chart',
+          );
+          setIsLoading(false);
+        }
+        return null;
       }
     };
 
-    renderChart();
+    let vegaView: any = null;
+    renderChart().then((result) => {
+      vegaView = result;
+    });
 
-    // Cleanup - let Vega handle its own cleanup
+    // Cleanup: use vega's own cleanup
     return () => {
-      // Don't manually clear innerHTML - let vega-embed handle cleanup
-      // This prevents React DOM errors when trying to remove already-removed nodes
+      isMounted = false;
+      if (vegaView && vegaView.finalize) {
+        try {
+          vegaView.finalize();
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
     };
   }, [spec]);
 
@@ -95,11 +106,14 @@ export function VegaChart({ spec, className }: VegaChartProps) {
 
   return (
     <div
+      key={specKey}
       ref={containerRef}
       className={cn(
         'vega-chart-container my-4 min-h-[300px] overflow-auto rounded-lg border bg-white p-4',
         className,
       )}
+      // Prevent React from managing this subtree
+      suppressHydrationWarning
     />
   );
 }
