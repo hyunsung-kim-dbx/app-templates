@@ -71,9 +71,20 @@ function toV3Usage(usage: LanguageModelUsage): LanguageModelV3Usage {
 }
 
 /**
+ * Check if a part is a tool call type (handles various formats from different sources)
+ */
+function isToolCallPart(part: any): boolean {
+  return part.type === 'dynamic-tool' ||
+    part.type === 'tool-invocation' ||
+    part.type === 'function_call' ||
+    part.type === 'tool-call';
+}
+
+/**
  * Filters and fixes tool calls from messages.
  * - Removes incomplete tool calls (missing output/result)
  * - Adds missing fields required by convertToModelMessages (id, args, result)
+ * - Handles multiple tool call formats: dynamic-tool, tool-invocation, function_call, tool-call
  */
 function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
   return messages.map((message) => {
@@ -81,15 +92,21 @@ function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
       return message;
     }
 
-    // Filter and fix dynamic-tool parts
+    // Filter and fix tool call parts (handle multiple formats)
     const filteredParts = message.parts
       .filter((part: any) => {
-        if (part.type === 'dynamic-tool') {
+        if (isToolCallPart(part)) {
           // Check for both 'output' and 'result' as either could be present
-          const hasResult = part.state === 'output-available' &&
-            (part.output !== undefined || part.result !== undefined);
+          // Also check state if available (dynamic-tool format)
+          const hasResult = (
+            part.state === 'output-available' ||
+            part.output !== undefined ||
+            part.result !== undefined
+          );
           if (!hasResult) {
-            console.log(`[AsyncChat] Filtering incomplete tool call: ${part.toolName} (${part.toolCallId})`);
+            const toolName = part.toolName || part.name || 'unknown';
+            const toolCallId = part.toolCallId || part.call_id || part.id || 'unknown';
+            console.log(`[AsyncChat] Filtering incomplete tool call: ${toolName} (${toolCallId})`);
           }
           return hasResult;
         }
@@ -97,13 +114,19 @@ function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
       })
       .map((part: any) => {
         // Fix tool calls that are missing required fields for conversion
-        if (part.type === 'dynamic-tool') {
+        if (isToolCallPart(part)) {
           return {
             ...part,
             // Ensure 'id' field exists (required by convertToModelMessages)
-            id: part.id ?? part.toolCallId,
-            // Ensure 'args' field exists (AI SDK expects 'args' not 'input')
-            args: part.args ?? part.input,
+            // Try multiple field names: id, toolCallId, call_id
+            id: part.id ?? part.toolCallId ?? part.call_id,
+            // Also set toolCallId for consistency
+            toolCallId: part.toolCallId ?? part.id ?? part.call_id,
+            // Ensure 'name' field exists (some formats use toolName)
+            name: part.name ?? part.toolName,
+            toolName: part.toolName ?? part.name,
+            // Ensure 'args' field exists (AI SDK expects 'args' not 'input' or 'arguments')
+            args: part.args ?? part.input ?? (typeof part.arguments === 'string' ? JSON.parse(part.arguments) : part.arguments),
             // Ensure 'result' field exists (AI SDK expects 'result' not 'output')
             result: part.result ?? part.output,
           };
