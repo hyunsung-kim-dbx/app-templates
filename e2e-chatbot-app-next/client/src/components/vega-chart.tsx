@@ -10,14 +10,30 @@ interface VegaChartProps {
 export function VegaChart({ spec, className }: VegaChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const renderInProgressRef = useRef(false);
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !spec) return;
+    if (!container || !spec) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Prevent multiple concurrent renders
+    if (renderInProgressRef.current) {
+      return;
+    }
 
     const renderChart = async () => {
+      renderInProgressRef.current = true;
       try {
         setError(null);
+        setIsLoading(true);
+
+        // Clear previous chart
+        container.innerHTML = '';
+
         await embed(container, spec, {
           actions: {
             export: true,
@@ -27,11 +43,17 @@ export function VegaChart({ spec, className }: VegaChartProps) {
           },
           renderer: 'svg',
         });
+
+        setIsLoading(false);
       } catch (err) {
         console.error('Vega render error:', err);
+        console.error('Failed spec:', spec);
         setError(
           err instanceof Error ? err.message : 'Failed to render chart',
         );
+        setIsLoading(false);
+      } finally {
+        renderInProgressRef.current = false;
       }
     };
 
@@ -39,7 +61,8 @@ export function VegaChart({ spec, className }: VegaChartProps) {
 
     // Cleanup
     return () => {
-      if (containerRef.current) {
+      // Only clear if component is unmounting, not on re-render
+      if (containerRef.current && !renderInProgressRef.current) {
         containerRef.current.innerHTML = '';
       }
     };
@@ -54,11 +77,27 @@ export function VegaChart({ spec, className }: VegaChartProps) {
     );
   }
 
+  if (isLoading) {
+    return (
+      <div
+        className={cn(
+          'vega-chart-container my-4 flex min-h-[300px] items-center justify-center overflow-auto rounded-lg border bg-white p-4',
+          className,
+        )}
+      >
+        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+          <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm">Loading visualization...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
       className={cn(
-        'vega-chart-container my-4 overflow-auto rounded-lg border bg-white p-4',
+        'vega-chart-container my-4 min-h-[300px] overflow-auto rounded-lg border bg-white p-4',
         className,
       )}
     />
