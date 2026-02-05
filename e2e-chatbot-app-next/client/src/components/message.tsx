@@ -72,14 +72,14 @@ const PurePreviewMessage = ({
     sendMessage,
   });
 
-  const attachmentsFromMessage = message.parts.filter(
+  const attachmentsFromMessage = (message.parts ?? []).filter(
     (part) => part.type === 'file',
   );
 
   // Extract non-OAuth error parts separately (OAuth errors are rendered inline)
   const errorParts = React.useMemo(
     () =>
-      message.parts
+      (message.parts ?? [])
         .filter((part) => part.type === 'data-error')
         .filter((part) => {
           // OAuth errors are rendered inline, not in the error section
@@ -98,7 +98,7 @@ const PurePreviewMessage = ({
      */
     () =>
       createMessagePartSegments(
-        message.parts.filter(
+        (message.parts ?? []).filter(
           (part) =>
             part.type !== 'data-error' || isCredentialErrorMessage(part.data),
         ),
@@ -108,7 +108,7 @@ const PurePreviewMessage = ({
 
   // Check if message only contains non-OAuth errors (no other content)
   const hasOnlyErrors = React.useMemo(() => {
-    const nonErrorParts = message.parts.filter(
+    const nonErrorParts = (message.parts ?? []).filter(
       (part) => part.type !== 'data-error',
     );
     // Only consider non-OAuth errors for this check
@@ -415,10 +415,10 @@ export const PreviewMessage = memo(
   PurePreviewMessage,
   (prevProps, nextProps) => {
     if (prevProps.isLoading !== nextProps.isLoading) return false;
-    if (prevProps.message.id !== nextProps.message.id) return false;
+    if (prevProps.message?.id !== nextProps.message?.id) return false;
     if (prevProps.requiresScrollPadding !== nextProps.requiresScrollPadding)
       return false;
-    if (!equal(prevProps.message.parts, nextProps.message.parts)) return false;
+    if (!equal(prevProps.message?.parts ?? [], nextProps.message?.parts ?? [])) return false;
 
     return false;
   },
