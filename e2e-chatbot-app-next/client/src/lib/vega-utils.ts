@@ -56,7 +56,14 @@ export function extractVegaFromToolOutput(
  */
 export function extractVegaSpec(content: string): ExtractedContent {
   console.log('[Vega] Attempting extraction from content length:', content.length);
-  console.log('[Vega] First 200 chars:', content.substring(0, 200));
+  console.log('[Vega] First 300 chars:', content.substring(0, 300));
+  console.log('[Vega] Last 500 chars:', content.substring(Math.max(0, content.length - 500)));
+
+  // Check for code block markers anywhere in content
+  const hasVegaBlock = content.includes('```vega-lite');
+  const hasJsonBlock = content.includes('```json');
+  const braceCount = (content.match(/{/g) || []).length;
+  console.log('[Vega] Content analysis:', { hasVegaBlock, hasJsonBlock, braceCount });
 
   // Pattern 1: Vega-Lite code block (preferred format)
   const vegaBlockMatch = content.match(/```vega-lite\s*([\s\S]*?)\s*```/);
@@ -182,6 +189,10 @@ export function extractVegaSpec(content: string): ExtractedContent {
   }
 
   console.log('[Vega] ❌ No valid Vega-Lite spec found in content');
+  // Log what we tried to help debug
+  if (braceCount > 0) {
+    console.log('[Vega] Debug: Found', braceCount, 'opening braces but none parsed as valid Vega-Lite');
+  }
   return { text: content, vegaSpec: null };
 }
 
