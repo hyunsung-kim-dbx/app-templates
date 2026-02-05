@@ -47,6 +47,7 @@ function PureMessages({
 
   useDataStream();
 
+  // Scroll on submit
   useEffect(() => {
     if (status === 'submitted') {
       requestAnimationFrame(() => {
@@ -60,6 +61,21 @@ function PureMessages({
       });
     }
   }, [status, messagesContainerRef]);
+
+  // Continuous scroll during streaming when user is at bottom
+  useEffect(() => {
+    if (status === 'streaming' && isAtBottom) {
+      requestAnimationFrame(() => {
+        const container = messagesContainerRef.current;
+        if (container) {
+          container.scrollTo({
+            top: container.scrollHeight,
+            behavior: 'instant',
+          });
+        }
+      });
+    }
+  }, [status, safeMessages, isAtBottom, messagesContainerRef]);
 
   return (
     <div

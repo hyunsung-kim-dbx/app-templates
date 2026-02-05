@@ -334,10 +334,16 @@ async function processChat(params: {
     let reasoningText = '';
     const sources: any[] = [];
 
+    // Track all part types seen for debugging
+    const partTypesSeen = new Set<string>();
+
     // Use fullStream to capture all part types
     for await (const part of result.fullStream) {
-      // Debug: Log each part type and content
-      console.log(`[AsyncChat Stream] Part type: ${part.type}`, JSON.stringify(part).slice(0, 200));
+      partTypesSeen.add(part.type);
+      // Debug: Log each part type and content (only log non-text-delta for brevity)
+      if (part.type !== 'text-delta') {
+        console.log(`[AsyncChat Stream] Part type: ${part.type}`, JSON.stringify(part).slice(0, 500));
+      }
 
       switch (part.type) {
         case 'text-delta':
@@ -412,8 +418,16 @@ async function processChat(params: {
         case 'finish':
           finishReason = part.finishReason;
           break;
+
+        default:
+          // Log any unhandled part types
+          console.log(`[AsyncChat Stream] UNHANDLED part type: ${part.type}`, JSON.stringify(part).slice(0, 500));
+          break;
       }
     }
+
+    // Log all part types seen
+    console.log(`[AsyncChat] All part types seen:`, Array.from(partTypesSeen));
 
     // Wait for completion
     await result.response;
