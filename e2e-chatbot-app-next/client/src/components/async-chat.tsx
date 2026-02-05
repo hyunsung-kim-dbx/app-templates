@@ -128,6 +128,9 @@ export function AsyncChat({
         messages={messages}
         setMessages={setMessages}
         sendMessage={handleSubmit}
+        addToolApprovalResponse={() => {
+          // No-op: async polling doesn't support tool approvals
+        }}
         regenerate={() => {
           // Simple regenerate - remove last assistant message and resend
           const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
@@ -140,6 +143,7 @@ export function AsyncChat({
           }
         }}
         isReadonly={isReadonly}
+        selectedModelId={selectedChatModel}
       />
 
       <form className="mx-auto flex w-full gap-2 bg-background px-4 pb-4 md:max-w-3xl md:pb-6">
