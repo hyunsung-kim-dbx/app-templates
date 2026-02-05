@@ -345,6 +345,12 @@ async function processChat(params: {
         console.log(`[AsyncChat Stream] Part type: ${part.type}`, JSON.stringify(part).slice(0, 500));
       }
 
+      // Check for tool-related content in any part
+      const partStr = JSON.stringify(part);
+      if (partStr.includes('tool') || partStr.includes('function') || partStr.includes('query')) {
+        console.log(`[AsyncChat] TOOL-RELATED PART: ${part.type}`, partStr.slice(0, 800));
+      }
+
       switch (part.type) {
         case 'text-delta':
           // AI SDK uses textDelta, but Databricks provider may use text
@@ -374,16 +380,18 @@ async function processChat(params: {
           break;
 
         case 'tool-call':
+          console.log(`[AsyncChat] TOOL CALL DETECTED: ${(part as any).toolName}`, JSON.stringify(part).slice(0, 300));
           const toolCallPart = {
             type: 'tool-invocation',
-            toolCallId: part.toolCallId,
-            toolName: part.toolName,
-            args: part.args,
+            toolCallId: (part as any).toolCallId,
+            toolName: (part as any).toolName,
+            args: (part as any).args,
             state: 'call',
           };
-          toolCalls.set(part.toolCallId, toolCallPart);
+          toolCalls.set((part as any).toolCallId, toolCallPart);
           // Add tool call immediately so UI shows it during streaming
           addJobPart(jobId, toolCallPart);
+          console.log(`[AsyncChat] Tool call added to job parts, total toolCalls: ${toolCalls.size}`);
           break;
 
         case 'tool-result':
