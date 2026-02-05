@@ -68,30 +68,42 @@ function PureMessages({
 
     // Track if user has manually scrolled up
     let userScrolledUp = false;
-    let lastScrollTop = 0;
+    let userInteracting = false;
+
+    // Detect when user starts interacting (wheel/touch)
+    const handleWheelStart = () => {
+      userInteracting = true;
+    };
+
+    const handleTouchStart = () => {
+      userInteracting = true;
+    };
 
     const handleScroll = () => {
       const container = messagesContainerRef.current;
       if (!container) return;
 
-      // If user scrolled up (scrollTop decreased), stop auto-scrolling
-      if (container.scrollTop < lastScrollTop - 50) {
-        userScrolledUp = true;
+      // If user is interacting and not at bottom, mark as scrolled up
+      if (userInteracting) {
+        const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 100;
+        if (!isAtBottom) {
+          userScrolledUp = true;
+        } else {
+          userScrolledUp = false;
+        }
+        userInteracting = false;
       }
-      // If user scrolled to bottom, resume auto-scrolling
-      if (container.scrollTop + container.clientHeight >= container.scrollHeight - 100) {
-        userScrolledUp = false;
-      }
-      lastScrollTop = container.scrollTop;
     };
 
     const container = messagesContainerRef.current;
     container?.addEventListener('scroll', handleScroll);
+    container?.addEventListener('wheel', handleWheelStart, { passive: true });
+    container?.addEventListener('touchstart', handleTouchStart, { passive: true });
 
     // Auto-scroll every 10ms during streaming
     const scrollInterval = setInterval(() => {
       const container = messagesContainerRef.current;
-      if (container && !userScrolledUp) {
+      if (container && !userScrolledUp && !userInteracting) {
         container.scrollTo({
           top: container.scrollHeight,
           behavior: 'instant',
@@ -102,6 +114,8 @@ function PureMessages({
     return () => {
       clearInterval(scrollInterval);
       container?.removeEventListener('scroll', handleScroll);
+      container?.removeEventListener('wheel', handleWheelStart);
+      container?.removeEventListener('touchstart', handleTouchStart);
     };
   }, [status, messagesContainerRef]);
 
