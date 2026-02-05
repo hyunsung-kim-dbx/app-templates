@@ -207,7 +207,7 @@ const PurePreviewMessage = ({
                       }
                     >
                       {message.role === 'assistant' && isLoading ? (
-                        <StreamingResponse isStreaming={isLoading} charsPerFrame={4}>
+                        <StreamingResponse isStreaming={isLoading}>
                           {cleanedText}
                         </StreamingResponse>
                       ) : (

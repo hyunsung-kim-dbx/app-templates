@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 
 interface UseTypewriterOptions {
-  /** Characters to reveal per frame (default: 3) */
+  /** Characters to reveal per frame (default: 2) */
   charsPerFrame?: number;
-  /** Milliseconds between frames (default: 16 ~60fps) */
+  /** Milliseconds between frames (default: 30) */
   frameInterval?: number;
   /** Whether animation is active (set false when streaming is done) */
   isStreaming?: boolean;
@@ -19,8 +19,8 @@ export function useTypewriter(
   options: UseTypewriterOptions = {},
 ) {
   const {
-    charsPerFrame = 3,
-    frameInterval = 16, // ~60fps
+    charsPerFrame = 2,
+    frameInterval = 30, // ~33fps, slower for readability
     isStreaming = true,
   } = options;
 

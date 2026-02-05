@@ -30,6 +30,47 @@ function toV3Usage(usage: LanguageModelUsage): LanguageModelV3Usage {
     },
   };
 }
+
+/**
+ * Filters out incomplete tool calls from messages.
+ * Tool calls without results (state !== 'output-available' or missing output)
+ * cause MissingToolResultsError when sent to the AI SDK.
+ * This happens when a previous request timed out mid-tool-execution.
+ */
+function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
+  return messages.map((message) => {
+    if (message.role !== 'assistant' || !message.parts) {
+      return message;
+    }
+
+    // Filter out dynamic-tool parts that don't have output
+    const filteredParts = message.parts.filter((part: any) => {
+      if (part.type === 'dynamic-tool') {
+        const hasOutput = part.state === 'output-available' && part.output !== undefined;
+        if (!hasOutput) {
+          console.log(`[Chat] Filtering incomplete tool call: ${part.toolName} (${part.toolCallId})`);
+        }
+        return hasOutput;
+      }
+      return true;
+    });
+
+    // If all parts were filtered out, return message with placeholder
+    if (filteredParts.length === 0 && message.parts.length > 0) {
+      console.log(`[Chat] All parts filtered from message ${message.id}, adding placeholder`);
+      return {
+        ...message,
+        parts: [{ type: 'text', text: '[Previous response was interrupted]' }],
+      };
+    }
+
+    return {
+      ...message,
+      parts: filteredParts,
+    };
+  });
+}
+
 import {
   authMiddleware,
   requireAuth,
@@ -251,9 +292,12 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     let finalUsage: LanguageModelUsage | undefined;
     const streamId = generateUUID();
 
+    // Filter out incomplete tool calls (those without results) to prevent MissingToolResultsError
+    const messagesWithCompleteTools = filterIncompleteToolCalls(uiMessages);
+
     // Truncate messages to prevent exceeding 4MB API request limit
     // Keeps the most recent 20 messages by default
-    const truncatedMessages = truncateMessages(uiMessages);
+    const truncatedMessages = truncateMessages(messagesWithCompleteTools);
 
     const model = await myProvider.languageModel(selectedChatModel);
     let finishReason: string | undefined;
