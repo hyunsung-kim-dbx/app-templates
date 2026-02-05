@@ -32,6 +32,9 @@ function PureMessages({
   isReadonly,
   selectedModelId,
 }: MessagesProps) {
+  // Ensure messages is always an array to prevent crashes
+  const safeMessages = messages ?? [];
+
   const {
     containerRef: messagesContainerRef,
     endRef: messagesEndRef,
@@ -66,16 +69,16 @@ function PureMessages({
     >
       <Conversation className="mx-auto flex min-w-0 max-w-4xl flex-col gap-4 md:gap-6">
         <ConversationContent className="flex flex-col gap-4 px-2 py-4 md:gap-6 md:px-4">
-          {messages.length === 0 && <Greeting />}
+          {safeMessages.length === 0 && <Greeting />}
 
-          {messages.map((message, index) => (
+          {safeMessages.map((message, index) => (
             <PreviewMessage
               key={message.id}
               chatId={chatId}
               message={message}
-              allMessages={messages}
+              allMessages={safeMessages}
               isLoading={
-                status === 'streaming' && messages.length - 1 === index
+                status === 'streaming' && safeMessages.length - 1 === index
               }
               setMessages={setMessages}
               addToolApprovalResponse={addToolApprovalResponse}
@@ -83,14 +86,14 @@ function PureMessages({
               regenerate={regenerate}
               isReadonly={isReadonly}
               requiresScrollPadding={
-                hasSentMessage && index === messages.length - 1
+                hasSentMessage && index === safeMessages.length - 1
               }
             />
           ))}
 
           {status === 'submitted' &&
-            messages.length > 0 &&
-            messages[messages.length - 1].role === 'user' &&
+            safeMessages.length > 0 &&
+            safeMessages[safeMessages.length - 1].role === 'user' &&
             selectedModelId !== 'chat-model-reasoning' && (
               <AwaitingResponseMessage />
             )}

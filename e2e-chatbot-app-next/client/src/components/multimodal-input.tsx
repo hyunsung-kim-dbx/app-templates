@@ -234,8 +234,8 @@ function PureMultimodalInput({
         )}
       </AnimatePresence>
 
-      {messages.length === 0 &&
-        attachments.length === 0 &&
+      {(messages?.length ?? 0) === 0 &&
+        (attachments?.length ?? 0) === 0 &&
         uploadQueue.length === 0 && (
           <SuggestedActions
             sendMessage={sendMessage}
@@ -264,12 +264,12 @@ function PureMultimodalInput({
           }
         }}
       >
-        {(attachments.length > 0 || uploadQueue.length > 0) && (
+        {((attachments?.length ?? 0) > 0 || uploadQueue.length > 0) && (
           <div
             data-testid="attachments-preview"
             className="flex flex-row items-end gap-2 overflow-x-scroll"
           >
-            {attachments.map((attachment) => (
+            {(attachments ?? []).map((attachment) => (
               <PreviewAttachment
                 key={attachment.url}
                 attachment={attachment}
@@ -338,7 +338,7 @@ export const MultimodalInput = memo(
   (prevProps, nextProps) => {
     if (prevProps.input !== nextProps.input) return false;
     if (prevProps.status !== nextProps.status) return false;
-    if (!equal(prevProps.attachments, nextProps.attachments)) return false;
+    if (!equal(prevProps.attachments ?? [], nextProps.attachments ?? [])) return false;
     if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType)
       return false;
 
