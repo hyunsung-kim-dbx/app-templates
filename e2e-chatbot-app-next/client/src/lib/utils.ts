@@ -63,41 +63,31 @@ export function generateUUID(): string {
 }
 
 export function sanitizeText(text: string) {
+  // Remove internal markers
   let result = text.replace('<has_function_call>', '');
 
-  // Fix inline markdown tables that are missing line breaks
-  // Agent outputs tables like: "name| | col1 | col2 | |---:|:---| | 0 | val1 | | 1 | val2 |nexttext"
+  // Skip table formatting if no tables detected
+  if (!result.includes('|')) {
+    return result;
+  }
 
-  // Step 1: Add newline before table start
-  // Pattern: word characters followed directly by "| |" (table with index column)
-  result = result.replace(/(\w)(\| *\| *\w)/g, '$1\n\n$2');
+  // 1. Add newline BEFORE table starts (text immediately followed by | |)
+  result = result.replace(/([a-zA-Z0-9\u3131-\uD79D])(\| *\|)/g, '$1\n\n$2');
 
-  // Step 2: Add newline before separator row (|---| or |:---|)
+  // 2. Add newline BEFORE separator row (| followed by |---)
   result = result.replace(/\| *(\|[-:]+)/g, '|\n$1');
 
-  // Step 3: Add newline after separator row, before data rows
-  result = result.replace(/([-:]\|) *(\| *[\d\w])/g, '$1\n$2');
+  // 3. Add newline AFTER separator row (---| followed by |)
+  result = result.replace(/([-:]\|) *(\| *[0-9])/g, '$1\n$2');
 
-  // Step 4: Add newlines between data rows
-  // Pattern: "| |" followed by a number (new row with index)
-  result = result.replace(/\| *\| *(\d)/g, '|\n| $1');
+  // 4. Add newline between data rows (| | followed by digit = new row)
+  result = result.replace(/\| *\| *([0-9])/g, '|\n| $1');
 
-  // Step 5: Add newline after table ends (| followed by letter that starts a word, not a table cell)
-  // Look for pattern: |<space>word where word is not a table continuation
-  result = result.replace(/\| *([a-zA-Z\u3131-\uD79D]{2,})/g, (match, word) => {
-    // If it looks like a table cell value (short, single word), keep it
-    // If it looks like start of a sentence (Korean, longer text), add newline
-    if (word.length > 10 || /[\u3131-\uD79D]/.test(word)) {
-      return `|\n\n${word}`;
-    }
-    return match;
-  });
+  // 5. Add newline AFTER table ends (| followed by non-table text)
+  // Match | followed by a word that's clearly not a table cell (Korean or long text)
+  result = result.replace(/\|([#\u3131-\uD79D])/g, '|\n\n$1');
 
-  // Step 6: Clean up agent/step names that appear before tables or text
-  // Pattern: word-with-dashes immediately followed by newline and table/text
-  result = result.replace(/([a-z]+-[a-z]+-[a-z]+)\n\n/gi, '$1\n\n---\n\n');
-
-  // Clean up excessive newlines (more than 2 consecutive)
+  // Clean up excessive newlines
   result = result.replace(/\n{3,}/g, '\n\n');
 
   return result;
