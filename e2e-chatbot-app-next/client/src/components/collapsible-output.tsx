@@ -39,6 +39,11 @@ export function isMarkdownTable(text: string): boolean {
  * | col1 | col2 |
  * |------|------|
  * | val1 | val2 |
+ *
+ * Also handles pandas-style tables with index column:
+ * | | col1 | col2 |
+ * |----:|:-----|:-----|
+ * | 0 | val1 | val2 |
  */
 export function parseMarkdownTable(text: string): TabularData | null {
   if (!isMarkdownTable(text)) return null;
@@ -52,10 +57,18 @@ export function parseMarkdownTable(text: string): TabularData | null {
 
   // Header is the line before separator
   const headerLine = lines[separatorIndex - 1];
-  const columns = headerLine
+  // Split and keep track of cells (including empty ones for index columns)
+  const rawHeaderCells = headerLine
     .split('|')
-    .map((cell) => cell.trim())
-    .filter((cell) => cell !== '');
+    .slice(1, -1) // Remove empty first/last from split on |...|
+    .map((cell) => cell.trim());
+
+  // Build columns array, replacing empty first cell with '#' for index (pandas style)
+  const columns = rawHeaderCells.map((cell, idx) => {
+    if (cell === '' && idx === 0) return '#'; // Index column
+    if (cell === '') return `col${idx}`; // Other empty columns get generic name
+    return cell;
+  });
 
   // Rows are all lines after separator
   const rows: any[][] = [];
@@ -65,8 +78,8 @@ export function parseMarkdownTable(text: string): TabularData | null {
 
     const cells = line
       .split('|')
-      .map((cell) => cell.trim())
-      .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1); // Remove empty first/last from split
+      .slice(1, -1) // Remove empty first/last from split on |...|
+      .map((cell) => cell.trim());
 
     // Parse numeric values
     const parsedCells = cells.map((cell) => {
@@ -75,8 +88,13 @@ export function parseMarkdownTable(text: string): TabularData | null {
       return Number.isNaN(num) ? cell : num;
     });
 
-    if (parsedCells.length > 0) {
+    // Only add row if it has the right number of columns
+    if (parsedCells.length === columns.length) {
       rows.push(parsedCells);
+    } else if (parsedCells.length > 0) {
+      // Pad or trim to match column count
+      const adjusted = columns.map((_, idx) => parsedCells[idx] ?? null);
+      rows.push(adjusted);
     }
   }
 
