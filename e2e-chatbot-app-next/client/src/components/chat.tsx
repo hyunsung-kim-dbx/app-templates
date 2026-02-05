@@ -62,6 +62,11 @@ export function Chat({
   const lastPartRef = useRef<UIMessageChunk | undefined>(lastPart);
   lastPartRef.current = lastPart;
 
+  // Auto-retry logic (retry from beginning, not resume from middle)
+  const retryCountRef = useRef(0);
+  const maxRetries = 2; // Will try up to 3 times total (initial + 2 retries)
+  const lastMessageIdRef = useRef<string | null>(null);
+
   const abortController = useRef<AbortController | null>(new AbortController());
   useEffect(() => {
     return () => {
@@ -211,25 +216,63 @@ export function Chat({
         return;
       }
 
-      // RESUME DISABLED: Always complete the stream gracefully
-      // Show whatever content we received, don't try to resume
+      // Check if stream was incomplete
+      const streamIncomplete = lastPartRef.current?.type !== 'finish';
+      const wasInterrupted = (isDisconnect || isError) && streamIncomplete;
+
       console.log('[Chat onFinish] Stream ended:', {
-        isComplete: lastPartRef.current?.type === 'finish',
+        isComplete: !streamIncomplete,
         isDisconnect,
         isError,
         receivedParts: streamCursor,
+        wasInterrupted,
       });
 
-      // Always complete gracefully - show what we have
+      // AUTO-RETRY: If stream was interrupted and we haven't exceeded retry limit
+      if (wasInterrupted && retryCountRef.current < maxRetries) {
+        const currentMessageId = finishedMessages?.[finishedMessages.length - 1]?.id;
+        const isSameMessage = currentMessageId === lastMessageIdRef.current;
+
+        // Only retry if it's the same message (prevent retry loops)
+        if (isSameMessage || lastMessageIdRef.current === null) {
+          retryCountRef.current++;
+          lastMessageIdRef.current = currentMessageId || null;
+
+          console.log('[Chat onFinish] Auto-retrying...', {
+            attempt: retryCountRef.current + 1,
+            maxRetries: maxRetries + 1,
+          });
+
+          toast({
+            type: 'info',
+            description: `Connection interrupted. Retrying automatically... (Attempt ${retryCountRef.current + 1}/${maxRetries + 1})`,
+          });
+
+          // Wait a bit before retrying (exponential backoff)
+          const delay = Math.min(1000 * Math.pow(2, retryCountRef.current - 1), 5000);
+          setTimeout(() => {
+            // Retry by regenerating the last message
+            if (finishedMessages && finishedMessages.length > 0) {
+              regenerate({ message: finishedMessages[finishedMessages.length - 1] });
+            }
+          }, delay);
+          return;
+        }
+      }
+
+      // Reset retry counter for next message
+      retryCountRef.current = 0;
+      lastMessageIdRef.current = null;
+
+      // Complete gracefully - show what we have
       setStreamCursor(0);
       fetchChatHistory();
 
-      // If stream was incomplete due to network error, show a toast
-      if ((isDisconnect || isError) && lastPartRef.current?.type !== 'finish') {
-        console.warn('[Chat onFinish] Stream interrupted, showing partial results');
+      // If we exhausted retries, show a final message
+      if (wasInterrupted && retryCountRef.current >= maxRetries) {
         toast({
           type: 'warning',
-          description: 'Response was interrupted. Showing partial results. You can try sending your message again.',
+          description: 'Response was interrupted after multiple retries. Showing partial results. You can try again manually.',
         });
       }
     },
