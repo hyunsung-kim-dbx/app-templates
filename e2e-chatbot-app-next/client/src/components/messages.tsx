@@ -47,7 +47,7 @@ function PureMessages({
 
   useDataStream();
 
-  // Scroll on submit
+  // Scroll to bottom only when user submits a new message
   useEffect(() => {
     if (status === 'submitted') {
       requestAnimationFrame(() => {
@@ -62,55 +62,7 @@ function PureMessages({
     }
   }, [status, messagesContainerRef]);
 
-  // Auto-scroll during streaming - but STOP if user scrolls up
-  useEffect(() => {
-    if (status !== 'streaming') return;
-
-    let userScrolledUp = false;
-    let lastScrollTop = 0;
-    const container = messagesContainerRef.current;
-    if (!container) return;
-
-    // Initialize lastScrollTop
-    lastScrollTop = container.scrollTop;
-
-    const handleScroll = () => {
-      const currentScrollTop = container.scrollTop;
-      const isAtBottom = currentScrollTop + container.clientHeight >= container.scrollHeight - 100;
-
-      // User scrolled UP (scrollTop decreased)
-      if (currentScrollTop < lastScrollTop - 10) {
-        userScrolledUp = true;
-      }
-
-      // User scrolled back to bottom - resume auto-scroll
-      if (isAtBottom) {
-        userScrolledUp = false;
-      }
-
-      lastScrollTop = currentScrollTop;
-    };
-
-    container.addEventListener('scroll', handleScroll, { passive: true });
-
-    // Auto-scroll every 100ms during streaming
-    const scrollInterval = setInterval(() => {
-      if (userScrolledUp) return;
-
-      const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 100;
-      if (!isAtBottom) {
-        container.scrollTo({
-          top: container.scrollHeight,
-          behavior: 'instant',
-        });
-      }
-    }, 100);
-
-    return () => {
-      clearInterval(scrollInterval);
-      container.removeEventListener('scroll', handleScroll);
-    };
-  }, [status, messagesContainerRef]);
+  // No auto-scroll during streaming - user has full control
 
   return (
     <div
