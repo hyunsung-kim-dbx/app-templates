@@ -121,7 +121,7 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
       Parameters
     </h4>
     <div className="rounded-md bg-muted/50">
-      <CodeBlock code={JSON.stringify(input, null, 2)} language="json" />
+      <CodeBlock code={JSON.stringify(input)} language="json" />
     </div>
   </div>
 );
@@ -156,7 +156,7 @@ export const ToolOutput = ({
     }
   } else if (typeof output === 'object' && output !== null && !React.isValidElement(output)) {
     // If output is already an object (not a React element), stringify it for display
-    outputString = JSON.stringify(output, null, 2);
+    outputString = JSON.stringify(output);
     parsedOutput = output;
   }
 

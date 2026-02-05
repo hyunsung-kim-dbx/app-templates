@@ -171,12 +171,6 @@ export function AsyncChat({
         />
       </div>
 
-      {/* Status indicator for async polling */}
-      {status === 'streaming' && (
-        <div className='-translate-x-1/2 fixed bottom-20 left-1/2 rounded-full bg-blue-500 px-3 py-1 text-white text-xs'>
-          Processing... (polling for updates)
-        </div>
-      )}
     </div>
   );
 }

@@ -308,7 +308,7 @@ const PurePreviewMessage = ({
                               <div className="whitespace-pre-wrap font-mono text-sm">
                                 {typeof output === 'string'
                                   ? output
-                                  : JSON.stringify(output, null, 2)}
+                                  : JSON.stringify(output)}
                               </div>
                             )
                           }
@@ -350,7 +350,7 @@ const PurePreviewMessage = ({
                               <div className="whitespace-pre-wrap font-mono text-sm">
                                 {typeof output === 'string'
                                   ? output
-                                  : JSON.stringify(output, null, 2)}
+                                  : JSON.stringify(output)}
                               </div>
                             )
                           }
