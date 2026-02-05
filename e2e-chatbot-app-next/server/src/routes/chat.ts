@@ -247,6 +247,8 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     const truncatedMessages = truncateMessages(uiMessages);
 
     const model = await myProvider.languageModel(selectedChatModel);
+    let finishReason: string | undefined;
+
     const result = streamText({
       model,
       messages: await convertToModelMessages(truncatedMessages),
@@ -254,8 +256,9 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
         [CONTEXT_HEADER_CONVERSATION_ID]: id,
         [CONTEXT_HEADER_USER_ID]: session.user.email ?? session.user.id,
       },
-      onFinish: ({ usage }) => {
+      onFinish: ({ usage, finishReason: reason }) => {
         finalUsage = usage;
+        finishReason = reason;
       },
     });
 
@@ -265,6 +268,7 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
      */
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
+        // Stream the response
         writer.merge(
           result.toUIMessageStream({
             originalMessages: uiMessages,
@@ -283,12 +287,31 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
             },
           }),
         );
+
+        // Wait for streaming to complete
+        await result.usage;
+
+        // Check if response was truncated due to token limit
+        if (finishReason === 'length') {
+          console.warn('[Token Limit] Response was truncated due to output token limit');
+
+          // Inject a user-friendly message
+          writer.write({
+            type: 'text',
+            text: '\n\n---\n\n⚠️ **Response truncated** - The model hit its output token limit.\n\nTo continue, send a follow-up message like:\n- "Please continue"\n- "What else?"\n- "Go on"',
+          });
+        }
       },
       onFinish: async ({ responseMessage }) => {
         console.log(
           'Finished message stream! Saving message...',
-          `ID: ${responseMessage.id}, Parts: ${responseMessage.parts.length}, Role: ${responseMessage.role}`,
+          `ID: ${responseMessage.id}, Parts: ${responseMessage.parts.length}, Role: ${responseMessage.role}, Finish: ${finishReason || 'unknown'}`,
         );
+
+        // Log token usage
+        if (finalUsage) {
+          console.log(`[Tokens] Input: ${finalUsage.inputTokens}, Output: ${finalUsage.outputTokens}, Finish: ${finishReason}`);
+        }
 
         // Size monitoring at save time (post-facto)
         const totalSize = responseMessage.parts
