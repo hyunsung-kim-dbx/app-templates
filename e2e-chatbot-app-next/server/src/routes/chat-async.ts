@@ -382,10 +382,10 @@ async function processChat(params: {
         case 'tool-call':
           console.log(`[AsyncChat] TOOL CALL DETECTED: ${(part as any).toolName}`, JSON.stringify(part).slice(0, 300));
           const toolCallPart = {
-            type: 'tool-invocation',
+            type: 'dynamic-tool',  // UI expects 'dynamic-tool' not 'tool-invocation'
             toolCallId: (part as any).toolCallId,
             toolName: (part as any).toolName,
-            args: (part as any).args,
+            input: (part as any).args,  // UI uses 'input' not 'args'
             state: 'call',
           };
           toolCalls.set((part as any).toolCallId, toolCallPart);
@@ -398,13 +398,13 @@ async function processChat(params: {
           // Update the tool call with the result
           const existingCall = toolCalls.get(part.toolCallId);
           if (existingCall) {
-            existingCall.state = 'result';
-            existingCall.result = part.result;
+            existingCall.state = 'output-available';  // UI expects 'output-available' not 'result'
+            existingCall.output = part.result;  // UI uses 'output' not 'result'
             // Update the part in the job to show result
             updateJobPart(
               jobId,
-              (p) => p.type === 'tool-invocation' && p.toolCallId === part.toolCallId,
-              { state: 'result', result: part.result }
+              (p) => p.type === 'dynamic-tool' && p.toolCallId === part.toolCallId,
+              { state: 'output-available', output: part.result }
             );
           }
           toolResults.set(part.toolCallId, {
