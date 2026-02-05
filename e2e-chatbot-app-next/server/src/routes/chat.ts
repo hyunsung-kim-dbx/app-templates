@@ -263,15 +263,15 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
      * We manually create the stream to have access to the stream writer.
      * This allows us to inject custom stream parts like data-error.
      *
-     * Added response chunking to split large responses into multiple messages.
+     * Added response size limiting with pacing to prevent stream overflow.
      */
-    let totalCharsInCurrentMessage = 0;
-    let messageChunkCount = 0;
+    let totalCharsStreamed = 0;
+    let chunksSent = 0;
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        // Wrap the stream to split large responses into multiple messages
-        const chunkingStream = async function* () {
+        // Wrap the stream to add pacing for large responses
+        const pacedStream = async function* () {
           for await (const part of result.toUIMessageStream({
             originalMessages: uiMessages,
             generateMessageId: generateUUID,
@@ -284,43 +284,25 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
               return errorMessage;
             },
           })) {
-            // Monitor text size in current message
+            // Monitor total response size
             if (part.type === 'text' && typeof part.text === 'string') {
-              totalCharsInCurrentMessage += part.text.length;
+              totalCharsStreamed += part.text.length;
 
-              // Check if we should split into a new message
-              if (totalCharsInCurrentMessage > STREAM_CONFIG.MAX_RESPONSE_SIZE) {
-                messageChunkCount++;
-
-                // Check if we've hit the max chunks limit
-                if (messageChunkCount >= STREAM_CONFIG.MAX_MESSAGE_CHUNKS) {
-                  console.warn(`Response split into ${messageChunkCount} messages (max: ${STREAM_CONFIG.MAX_MESSAGE_CHUNKS} reached). Truncating further content.`);
-                  yield {
-                    type: 'text',
-                    text: '\n\n_[Response continues but was truncated to prevent overload. Please ask for a more focused query.]_',
-                  };
-                  break;
-                }
-
-                console.log(`Response size exceeded ${STREAM_CONFIG.MAX_RESPONSE_SIZE} chars. Splitting into message chunk ${messageChunkCount + 1}`);
-
-                // Add continuation indicator
+              // Check if we're exceeding safe limits
+              if (totalCharsStreamed > STREAM_CONFIG.MAX_RESPONSE_SIZE * STREAM_CONFIG.MAX_MESSAGE_CHUNKS) {
+                console.warn(`Response truncated at ${totalCharsStreamed} chars (max: ${STREAM_CONFIG.MAX_RESPONSE_SIZE * STREAM_CONFIG.MAX_MESSAGE_CHUNKS}) to prevent stream overflow`);
                 yield {
                   type: 'text',
-                  text: '\n\n_[Continuing in next message...]_',
+                  text: '\n\n_[Response truncated - output too large. Please ask for a more concise response.]_',
                 };
+                break;
+              }
 
-                // Finish current message
-                yield { type: 'finish', finishReason: 'stop' };
-
-                // Reset counter for new message
-                totalCharsInCurrentMessage = 0;
-
-                // Add continuation header to new message
-                yield {
-                  type: 'text',
-                  text: `_[Continued from previous message (${messageChunkCount + 1}/${STREAM_CONFIG.MAX_MESSAGE_CHUNKS})]_\n\n`,
-                };
+              // Add small delay every N chunks to pace the stream
+              chunksSent++;
+              if (chunksSent % 50 === 0 && part.text.length > 100) {
+                // Add a tiny pause every 50 chunks to prevent overwhelming the connection
+                await new Promise(resolve => setTimeout(resolve, 5));
               }
             }
 
@@ -328,12 +310,12 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
           }
 
           // Log final stats
-          if (messageChunkCount > 0) {
-            console.log(`Response was split into ${messageChunkCount + 1} total messages`);
+          if (totalCharsStreamed > STREAM_CONFIG.MAX_RESPONSE_SIZE) {
+            console.log(`Large response: ${totalCharsStreamed} chars (${Math.ceil(totalCharsStreamed / STREAM_CONFIG.MAX_RESPONSE_SIZE)}x normal size)`);
           }
         };
 
-        writer.merge(chunkingStream());
+        writer.merge(pacedStream());
       },
       onFinish: async ({ responseMessage }) => {
         console.log(
