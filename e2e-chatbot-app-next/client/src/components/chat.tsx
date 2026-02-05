@@ -218,17 +218,24 @@ export function Chat({
 
       // Check if stream was incomplete
       const streamIncomplete = lastPartRef.current?.type !== 'finish';
-      const wasInterrupted = (isDisconnect || isError) && streamIncomplete;
+
+      // Don't consider it "interrupted" if we received substantial content
+      // (likely hit token limit, not actual interruption)
+      const SUBSTANTIAL_CONTENT_THRESHOLD = 50; // More than 50 parts = substantial response
+      const hasSubstantialContent = streamCursorRef.current > SUBSTANTIAL_CONTENT_THRESHOLD;
+      const wasInterrupted = (isDisconnect || isError) && streamIncomplete && !hasSubstantialContent;
 
       console.log('[Chat onFinish] Stream ended:', {
         isComplete: !streamIncomplete,
         isDisconnect,
         isError,
-        receivedParts: streamCursor,
+        receivedParts: streamCursorRef.current,
+        hasSubstantialContent,
         wasInterrupted,
       });
 
       // AUTO-RETRY: If stream was interrupted and we haven't exceeded retry limit
+      // Skip retry if we received substantial content (likely token limit, not interruption)
       if (wasInterrupted && retryCountRef.current < maxRetries) {
         const currentMessageId = finishedMessages?.[finishedMessages.length - 1]?.id;
         const isSameMessage = currentMessageId === lastMessageIdRef.current;

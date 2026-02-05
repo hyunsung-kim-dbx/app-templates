@@ -288,18 +288,20 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
           }),
         );
 
-        // Wait for streaming to complete
-        await result.usage;
+        // Wait for streaming to complete and get finish reason directly from result
+        const [, streamFinishReason] = await Promise.all([
+          result.usage,
+          result.finishReason,
+        ]);
 
-        // Check if response was truncated due to token limit
+        // Update finishReason for logging (use directly awaited value if callback didn't set it)
+        if (!finishReason) {
+          finishReason = streamFinishReason;
+        }
+
+        // Log if response was truncated due to token limit
         if (finishReason === 'length') {
           console.warn('[Token Limit] Response was truncated due to output token limit');
-
-          // Inject a user-friendly message
-          writer.write({
-            type: 'text',
-            text: '\n\n---\n\n⚠️ **Response truncated** - The model hit its output token limit.\n\nTo continue, send a follow-up message like:\n- "Please continue"\n- "What else?"\n- "Go on"',
-          });
         }
       },
       onFinish: async ({ responseMessage }) => {
