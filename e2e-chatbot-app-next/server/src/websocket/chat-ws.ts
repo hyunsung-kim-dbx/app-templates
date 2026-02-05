@@ -60,18 +60,21 @@ function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
       .map((part: any) => {
         // Fix tool calls that are missing required fields for conversion
         if (isToolCallPart(part)) {
+          const unifiedId = part.id ?? part.toolCallId ?? part.call_id;
+          const unifiedName = part.name ?? part.toolName;
+          const unifiedArgs = part.args ?? part.input ?? (typeof part.arguments === 'string' ? JSON.parse(part.arguments) : part.arguments);
           return {
             ...part,
-            // Ensure 'id' field exists (required by convertToModelMessages)
-            // Try multiple field names: id, toolCallId, call_id
-            id: part.id ?? part.toolCallId ?? part.call_id,
-            // Also set toolCallId for consistency
-            toolCallId: part.toolCallId ?? part.id ?? part.call_id,
-            // Ensure 'name' field exists (some formats use toolName)
-            name: part.name ?? part.toolName,
-            toolName: part.toolName ?? part.name,
+            // Set ALL ID field names for compatibility with different systems
+            id: unifiedId,
+            call_id: unifiedId,  // Databricks requires this
+            toolCallId: unifiedId,
+            // Set ALL name field names
+            name: unifiedName,
+            toolName: unifiedName,
             // Ensure 'args' field exists (AI SDK expects 'args' not 'input' or 'arguments')
-            args: part.args ?? part.input ?? (typeof part.arguments === 'string' ? JSON.parse(part.arguments) : part.arguments),
+            args: unifiedArgs,
+            arguments: typeof unifiedArgs === 'object' ? JSON.stringify(unifiedArgs) : unifiedArgs,
             // Ensure 'result' field exists (AI SDK expects 'result' not 'output')
             result: part.result ?? part.output,
           };

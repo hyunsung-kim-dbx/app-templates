@@ -178,6 +178,7 @@ The application supports two operating modes:
 
 #### Persistent Mode (with Database)
 
+
 This is the default mode when database environment variables are configured. In this mode:
 
 - Chat conversations are saved to Postgres/Lakebase

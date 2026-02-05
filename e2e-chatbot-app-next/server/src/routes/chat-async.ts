@@ -115,18 +115,21 @@ function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
       .map((part: any) => {
         // Fix tool calls that are missing required fields for conversion
         if (isToolCallPart(part)) {
+          const unifiedId = part.id ?? part.toolCallId ?? part.call_id;
+          const unifiedName = part.name ?? part.toolName;
+          const unifiedArgs = part.args ?? part.input ?? (typeof part.arguments === 'string' ? JSON.parse(part.arguments) : part.arguments);
           return {
             ...part,
-            // Ensure 'id' field exists (required by convertToModelMessages)
-            // Try multiple field names: id, toolCallId, call_id
-            id: part.id ?? part.toolCallId ?? part.call_id,
-            // Also set toolCallId for consistency
-            toolCallId: part.toolCallId ?? part.id ?? part.call_id,
-            // Ensure 'name' field exists (some formats use toolName)
-            name: part.name ?? part.toolName,
-            toolName: part.toolName ?? part.name,
+            // Set ALL ID field names for compatibility with different systems
+            id: unifiedId,
+            call_id: unifiedId,  // Databricks requires this
+            toolCallId: unifiedId,
+            // Set ALL name field names
+            name: unifiedName,
+            toolName: unifiedName,
             // Ensure 'args' field exists (AI SDK expects 'args' not 'input' or 'arguments')
-            args: part.args ?? part.input ?? (typeof part.arguments === 'string' ? JSON.parse(part.arguments) : part.arguments),
+            args: unifiedArgs,
+            arguments: typeof unifiedArgs === 'object' ? JSON.stringify(unifiedArgs) : unifiedArgs,
             // Ensure 'result' field exists (AI SDK expects 'result' not 'output')
             result: part.result ?? part.output,
           };
@@ -477,13 +480,16 @@ async function processChat(params: {
           // Finalize any pending text before tool call
           currentTextPart = null;
 
-          const toolCallId = (part as any).toolCallId;
+          // Extract ID from any possible field name (different providers use different names)
+          const toolCallId = (part as any).toolCallId ?? (part as any).call_id ?? (part as any).id;
           const toolCallPart = {
             type: 'dynamic-tool',  // UI expects 'dynamic-tool' not 'tool-invocation'
-            // Include all fields needed for convertToModelMessages
+            // Include ALL ID field names for compatibility with different systems
             id: toolCallId,  // Required for model message conversion
-            toolCallId,
-            toolName: (part as any).toolName,
+            call_id: toolCallId,  // Databricks format
+            toolCallId,  // AI SDK format
+            toolName: (part as any).toolName ?? (part as any).name,
+            name: (part as any).name ?? (part as any).toolName,
             args: (part as any).args ?? (part as any).input,  // AI SDK uses 'args', fallback to 'input'
             input: (part as any).input,  // Keep for backward compatibility
             state: 'input-available',  // Valid ToolState for UI to show parameters
