@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import embed, { type VisualizationSpec } from 'vega-embed';
 import { cn } from '@/lib/utils';
 
@@ -8,60 +8,58 @@ interface VegaChartProps {
 }
 
 export function VegaChart({ spec, className }: VegaChartProps) {
-  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  // Ref for the outer container (React-managed, but we only use it as a mount point)
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Store vega view for cleanup
+  const viewRef = useRef<any>(null);
+  // Store the imperatively created vega container
+  const vegaDivRef = useRef<HTMLDivElement | null>(null);
+
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  console.log('[VegaChart] Component render - has spec:', !!spec, 'has container:', !!container);
-
   // Stable ID for this chart instance
   const chartId = useMemo(() => {
-    const id = `vega-chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    console.log('[VegaChart] Generated chartId:', id);
-    return id;
-  }, []); // Only generate once per component instance
-
-  // Use callback ref to reliably get the container element
-  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
-    console.log('[VegaChart] ⚡ Callback ref called! Node:', !!node, 'Node type:', node?.nodeName);
-    if (node) {
-      console.log('[VegaChart] Setting container state...');
-      setContainer(node);
-    } else {
-      console.log('[VegaChart] Node is null (unmounting)');
-      // Don't clear container state here - let useEffect cleanup handle it
-    }
+    return `vega-chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }, []);
 
   useEffect(() => {
+    const container = containerRef.current;
     if (!container || !spec) {
-      console.warn('[VegaChart] Waiting for container or spec...', { container: !!container, spec: !!spec });
       return;
     }
 
-    console.log('[VegaChart] Starting render with valid container and spec');
-
     let isMounted = true;
-    let vegaView: any = null;
 
     const renderChart = async () => {
       try {
         setError(null);
         setIsLoading(true);
 
-        // Create a child div for vega to render into (isolates from React)
-        const vegaContainer = document.createElement('div');
-        vegaContainer.className = 'vega-render-target';
-        vegaContainer.style.width = '100%';
-        vegaContainer.style.height = '100%';
-
-        // Clear any existing content and append new container
-        while (container.firstChild) {
-          container.removeChild(container.firstChild);
+        // Clean up previous vega instance if exists
+        if (viewRef.current?.finalize) {
+          try {
+            viewRef.current.finalize();
+          } catch (e) {
+            // Ignore
+          }
+          viewRef.current = null;
         }
-        container.appendChild(vegaContainer);
 
-        // Use requestAnimationFrame to ensure DOM is painted
+        // Remove previous vega container if exists
+        if (vegaDivRef.current && vegaDivRef.current.parentNode) {
+          vegaDivRef.current.parentNode.removeChild(vegaDivRef.current);
+          vegaDivRef.current = null;
+        }
+
+        // Create vega container IMPERATIVELY - React has no knowledge of this element
+        const vegaDiv = document.createElement('div');
+        vegaDiv.className = 'vega-render-target';
+        vegaDiv.style.width = '100%';
+        container.appendChild(vegaDiv);
+        vegaDivRef.current = vegaDiv;
+
+        // Wait for DOM to be ready
         await new Promise<void>(resolve => {
           requestAnimationFrame(() => {
             requestAnimationFrame(() => resolve());
@@ -69,14 +67,11 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         });
 
         if (!isMounted) {
-          console.log('[VegaChart] Unmounted before render');
-          return null;
+          return;
         }
 
-        console.log('[VegaChart] Calling vega-embed...');
-
-        // Vega-embed renders into the isolated child div
-        const result = await embed(vegaContainer, spec, {
+        // Vega-embed renders into the imperatively created container
+        const result = await embed(vegaDiv, spec, {
           actions: {
             export: true,
             source: false,
@@ -84,76 +79,90 @@ export function VegaChart({ spec, className }: VegaChartProps) {
             editor: false,
           },
           renderer: 'svg',
-          logLevel: 2, // Suppress version warnings
+          logLevel: 2,
         });
 
-        console.log('[VegaChart] ✅ Render successful');
-
         if (isMounted) {
+          viewRef.current = result;
           setIsLoading(false);
+        } else {
+          // Component unmounted during render, clean up
+          if (result?.finalize) {
+            result.finalize();
+          }
         }
-
-        return result;
       } catch (err) {
-        console.error('[VegaChart] ❌ Render error:', err);
+        console.error('[VegaChart] Render error:', err);
         if (isMounted) {
           setError(
             err instanceof Error ? err.message : 'Failed to render chart',
           );
           setIsLoading(false);
         }
-        return null;
       }
     };
 
-    renderChart().then((result) => {
-      vegaView = result;
-    });
+    renderChart();
 
-    // Cleanup: finalize vega view ONLY (let React handle DOM)
+    // Cleanup function
     return () => {
       isMounted = false;
 
-      if (vegaView && vegaView.finalize) {
+      // Finalize vega view first (this cleans up vega's internal state)
+      if (viewRef.current?.finalize) {
         try {
-          vegaView.finalize();
-          console.log('[VegaChart] Vega view finalized');
+          viewRef.current.finalize();
         } catch (e) {
-          console.warn('[VegaChart] Cleanup error (ignored):', e);
+          // Ignore cleanup errors
         }
+        viewRef.current = null;
       }
 
-      // Don't manually remove children - vega.finalize() + React cleanup is enough
-      // Manual removeChild causes conflicts with React's reconciliation
+      // Remove the imperatively created vega container
+      // This is safe because React never knew about this element
+      if (vegaDivRef.current && vegaDivRef.current.parentNode) {
+        try {
+          vegaDivRef.current.parentNode.removeChild(vegaDivRef.current);
+        } catch (e) {
+          // Ignore if already removed
+        }
+        vegaDivRef.current = null;
+      }
     };
-  }, [container, spec]);
+  }, [spec]);
 
-  // Always render the container div (needed for callback ref to be called)
+  // Render a minimal container - React only manages this outer div
+  // Error and loading states are overlays that don't interfere with vega's DOM
   return (
     <div
       id={chartId}
-      ref={setContainerRef}
       className={cn(
-        'vega-chart-container my-4 min-h-[300px] overflow-auto rounded-lg border bg-white p-4',
+        'vega-chart-container relative my-4 min-h-[300px] overflow-auto rounded-lg border bg-white p-4',
         className,
       )}
-      suppressHydrationWarning
     >
+      {/* This div is the mount point for the imperatively created vega container */}
+      <div ref={containerRef} className="w-full" />
+
+      {/* Error overlay - positioned absolutely so it doesn't affect vega's DOM */}
       {error && (
-        <div className="rounded border border-red-300 bg-red-50 p-4 text-red-700">
-          <p className="font-semibold text-sm">Chart Rendering Error</p>
-          <p className="text-xs">{error}</p>
+        <div className="absolute inset-4 flex items-center justify-center rounded bg-red-50">
+          <div className="rounded border border-red-300 bg-red-50 p-4 text-red-700">
+            <p className="font-semibold text-sm">Chart Rendering Error</p>
+            <p className="text-xs">{error}</p>
+          </div>
         </div>
       )}
 
+      {/* Loading overlay - positioned absolutely so it doesn't affect vega's DOM */}
       {isLoading && !error && (
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
-          <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm">Loading visualization...</p>
+        <div className="absolute inset-4 flex items-center justify-center bg-white/80">
+          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+            <div className="size-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <p className="text-sm">Loading visualization...</p>
+          </div>
         </div>
       )}
-
-      {/* Vega will inject the chart here when ready */}
     </div>
   );
 }
