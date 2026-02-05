@@ -7,6 +7,7 @@ import express, {
   type NextFunction,
   type Express,
 } from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,6 +18,7 @@ import { sessionRouter } from './routes/session';
 import { messagesRouter } from './routes/messages';
 import { configRouter } from './routes/config';
 import { ChatSDKError } from '@chat-template/core/errors';
+import { initializeWebSocketServer } from './websocket/chat-ws';
 
 // ESM-compatible __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -155,8 +157,15 @@ async function startServer() {
     }
   }
 
-  app.listen(PORT, () => {
+  // Create HTTP server and attach WebSocket
+  const server = createServer(app);
+
+  // Initialize WebSocket server for chat streaming
+  initializeWebSocketServer(server);
+
+  server.listen(PORT, () => {
     console.log(`Backend server is running on http://localhost:${PORT}`);
+    console.log(`WebSocket server is running on ws://localhost:${PORT}/ws/chat`);
     console.log(`Environment: ${isDevelopment ? 'development' : 'production'}`);
   });
 }

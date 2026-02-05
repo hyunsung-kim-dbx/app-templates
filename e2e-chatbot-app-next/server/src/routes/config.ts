@@ -13,9 +13,14 @@ export const configRouter: RouterType = Router();
  * Returns feature flags based on environment configuration
  */
 configRouter.get('/', (_req: Request, res: Response) => {
+  // WebSocket is enabled by default to bypass proxy timeout issues
+  // Set USE_WEBSOCKET=false to disable
+  const useWebSocket = process.env.USE_WEBSOCKET !== 'false';
+
   res.json({
     features: {
       chatHistory: isDatabaseAvailable(),
+      useWebSocket,
     },
   });
 });
