@@ -49,6 +49,18 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         setError(null);
         setIsLoading(true);
 
+        // Create a child div for vega to render into (isolates from React)
+        const vegaContainer = document.createElement('div');
+        vegaContainer.className = 'vega-render-target';
+        vegaContainer.style.width = '100%';
+        vegaContainer.style.height = '100%';
+
+        // Clear any existing content and append new container
+        while (container.firstChild) {
+          container.removeChild(container.firstChild);
+        }
+        container.appendChild(vegaContainer);
+
         // Use requestAnimationFrame to ensure DOM is painted
         await new Promise<void>(resolve => {
           requestAnimationFrame(() => {
@@ -61,18 +73,10 @@ export function VegaChart({ spec, className }: VegaChartProps) {
           return null;
         }
 
-        // Verify container is still in the document
-        if (!document.body.contains(container)) {
-          console.error('[VegaChart] Container not in document');
-          setError('Container not in DOM');
-          setIsLoading(false);
-          return null;
-        }
-
         console.log('[VegaChart] Calling vega-embed...');
 
-        // Vega-embed handles DOM updates automatically
-        const result = await embed(container, spec, {
+        // Vega-embed renders into the isolated child div
+        const result = await embed(vegaContainer, spec, {
           actions: {
             export: true,
             source: false,
@@ -106,14 +110,22 @@ export function VegaChart({ spec, className }: VegaChartProps) {
       vegaView = result;
     });
 
-    // Cleanup: use vega's own cleanup
+    // Cleanup: finalize vega view and clear container
     return () => {
       isMounted = false;
+
       if (vegaView && vegaView.finalize) {
         try {
           vegaView.finalize();
         } catch (e) {
           console.warn('[VegaChart] Cleanup error (ignored):', e);
+        }
+      }
+
+      // Clear container to prevent React conflicts
+      if (container) {
+        while (container.firstChild) {
+          container.removeChild(container.firstChild);
         }
       }
     };
