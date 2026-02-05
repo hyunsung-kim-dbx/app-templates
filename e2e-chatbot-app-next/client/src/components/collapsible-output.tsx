@@ -20,6 +20,71 @@ export function isTabularData(output: unknown): output is TabularData {
   );
 }
 
+/**
+ * Checks if string contains a markdown table
+ * Looks for pipe-delimited rows with separator line (|---|)
+ */
+export function isMarkdownTable(text: string): boolean {
+  if (typeof text !== 'string') return false;
+  const lines = text.trim().split('\n');
+  if (lines.length < 2) return false;
+
+  // Check if any line looks like a markdown table separator (|---|---|)
+  return lines.some((line) => /^\|[\s:-]+\|/.test(line.trim()));
+}
+
+/**
+ * Parse markdown table into TabularData format
+ * Handles tables like:
+ * | col1 | col2 |
+ * |------|------|
+ * | val1 | val2 |
+ */
+export function parseMarkdownTable(text: string): TabularData | null {
+  if (!isMarkdownTable(text)) return null;
+
+  const lines = text.trim().split('\n').filter((line) => line.trim());
+  if (lines.length < 2) return null;
+
+  // Find the separator line (|---|---|)
+  const separatorIndex = lines.findIndex((line) => /^\|[\s:-]+\|/.test(line.trim()));
+  if (separatorIndex < 1) return null;
+
+  // Header is the line before separator
+  const headerLine = lines[separatorIndex - 1];
+  const columns = headerLine
+    .split('|')
+    .map((cell) => cell.trim())
+    .filter((cell) => cell !== '');
+
+  // Rows are all lines after separator
+  const rows: any[][] = [];
+  for (let i = separatorIndex + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line.startsWith('|')) continue;
+
+    const cells = line
+      .split('|')
+      .map((cell) => cell.trim())
+      .filter((_, idx, arr) => idx > 0 && idx < arr.length - 1); // Remove empty first/last from split
+
+    // Parse numeric values
+    const parsedCells = cells.map((cell) => {
+      if (cell === '' || cell === '-') return null;
+      const num = Number(cell);
+      return Number.isNaN(num) ? cell : num;
+    });
+
+    if (parsedCells.length > 0) {
+      rows.push(parsedCells);
+    }
+  }
+
+  if (columns.length === 0 || rows.length === 0) return null;
+
+  return { columns, rows };
+}
+
 interface CollapsibleTableProps {
   data: TabularData;
   rowsPerPage?: number;

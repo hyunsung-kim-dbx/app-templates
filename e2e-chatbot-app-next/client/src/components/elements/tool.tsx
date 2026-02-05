@@ -23,6 +23,8 @@ import {
   CollapsibleTable,
   CollapsibleJson,
   isTabularData,
+  isMarkdownTable,
+  parseMarkdownTable,
 } from '../collapsible-output';
 
 // Shared types - uses AI SDK's native tool states
@@ -158,7 +160,7 @@ export const ToolOutput = ({
     parsedOutput = output;
   }
 
-  // Check if output is tabular data (SQL results)
+  // Check if output is tabular data (SQL results with {columns, rows})
   if (isTabularData(parsedOutput)) {
     return (
       <div className={cn('space-y-2 p-3', className)} {...props}>
@@ -170,6 +172,23 @@ export const ToolOutput = ({
         </div>
       </div>
     );
+  }
+
+  // Check if output is a markdown table (|---|---|)
+  if (outputString && isMarkdownTable(outputString)) {
+    const tableData = parseMarkdownTable(outputString);
+    if (tableData) {
+      return (
+        <div className={cn('space-y-2 p-3', className)} {...props}>
+          <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
+            Result
+          </h4>
+          <div className="overflow-x-auto rounded-md bg-muted/50 p-2 text-foreground text-xs">
+            <CollapsibleTable data={tableData} rowsPerPage={15} />
+          </div>
+        </div>
+      );
+    }
   }
 
   // Check if output is large JSON (more than 10 lines)
