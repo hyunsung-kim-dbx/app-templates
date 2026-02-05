@@ -230,6 +230,15 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     // Clear any previous active stream for this chat
     streamCache.clearActiveStream(id);
 
+    // Track client disconnection for debugging
+    let clientDisconnected = false;
+    req.on('close', () => {
+      if (!res.writableEnded) {
+        clientDisconnected = true;
+        console.warn(`[Client Disconnect] Client closed connection for chat ${id} before stream completed`);
+      }
+    });
+
     // Set request context with user's access token for OBO operations
     if (req.userAccessToken) {
       setRequestContext({
