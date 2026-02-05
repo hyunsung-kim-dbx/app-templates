@@ -8,7 +8,7 @@ interface VegaChartProps {
 }
 
 export function VegaChart({ spec, className }: VegaChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -19,15 +19,19 @@ export function VegaChart({ spec, className }: VegaChartProps) {
     return `vega-chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }, []); // Only generate once per component instance
 
+  // Use callback ref to reliably get the container element
+  const setContainerRef = useCallback((node: HTMLDivElement | null) => {
+    console.log('[VegaChart] Callback ref called, node:', !!node);
+    setContainer(node);
+  }, []);
+
   useEffect(() => {
-    const container = containerRef.current;
     if (!container || !spec) {
-      console.warn('[VegaChart] No container or spec available');
-      setIsLoading(false);
+      console.warn('[VegaChart] Waiting for container or spec...', { container: !!container, spec: !!spec });
       return;
     }
 
-    console.log('[VegaChart] Starting render, container exists:', !!container);
+    console.log('[VegaChart] Starting render with valid container and spec');
 
     let isMounted = true;
     let vegaView: any = null;
@@ -37,19 +41,22 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         setError(null);
         setIsLoading(true);
 
-        // Small delay to ensure DOM is ready
-        await new Promise(resolve => setTimeout(resolve, 10));
+        // Use requestAnimationFrame to ensure DOM is painted
+        await new Promise<void>(resolve => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => resolve());
+          });
+        });
 
         if (!isMounted) {
           console.log('[VegaChart] Unmounted before render');
           return null;
         }
 
-        // Double-check container still exists
-        const currentContainer = containerRef.current;
-        if (!currentContainer) {
-          console.error('[VegaChart] Container disappeared before render');
-          setError('Container not ready');
+        // Verify container is still in the document
+        if (!document.body.contains(container)) {
+          console.error('[VegaChart] Container not in document');
+          setError('Container not in DOM');
           setIsLoading(false);
           return null;
         }
@@ -57,7 +64,7 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         console.log('[VegaChart] Calling vega-embed...');
 
         // Vega-embed handles DOM updates automatically
-        const result = await embed(currentContainer, spec, {
+        const result = await embed(container, spec, {
           actions: {
             export: true,
             source: false,
@@ -74,7 +81,6 @@ export function VegaChart({ spec, className }: VegaChartProps) {
           setIsLoading(false);
         }
 
-        // Return cleanup function from vega-embed
         return result;
       } catch (err) {
         console.error('[VegaChart] ❌ Render error:', err);
@@ -103,7 +109,7 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         }
       }
     };
-  }, [spec]);
+  }, [container, spec]);
 
   if (error) {
     return (
@@ -133,7 +139,7 @@ export function VegaChart({ spec, className }: VegaChartProps) {
   return (
     <div
       id={chartId}
-      ref={containerRef}
+      ref={setContainerRef}
       className={cn(
         'vega-chart-container my-4 min-h-[300px] overflow-auto rounded-lg border bg-white p-4',
         className,
