@@ -46,6 +46,7 @@ import {
   updateJobStatus,
   appendJobText,
   addJobPart,
+  updateJobPart,
   setJobParts,
   completeJob,
   failJob,
@@ -352,17 +353,31 @@ async function processChat(params: {
           const reasoningContent = (part as any).textDelta ?? (part as any).text;
           if (reasoningContent != null) {
             reasoningText += reasoningContent;
+            // Update reasoning part in job for live display
+            updateJobPart(
+              jobId,
+              (p) => p.type === 'reasoning',
+              { text: reasoningText }
+            );
+            // If no reasoning part exists yet, add one
+            const job = getJob(jobId);
+            if (job && !job.parts.some(p => p.type === 'reasoning')) {
+              addJobPart(jobId, { type: 'reasoning', text: reasoningText });
+            }
           }
           break;
 
         case 'tool-call':
-          toolCalls.set(part.toolCallId, {
+          const toolCallPart = {
             type: 'tool-invocation',
             toolCallId: part.toolCallId,
             toolName: part.toolName,
             args: part.args,
             state: 'call',
-          });
+          };
+          toolCalls.set(part.toolCallId, toolCallPart);
+          // Add tool call immediately so UI shows it during streaming
+          addJobPart(jobId, toolCallPart);
           break;
 
         case 'tool-result':
@@ -371,6 +386,12 @@ async function processChat(params: {
           if (existingCall) {
             existingCall.state = 'result';
             existingCall.result = part.result;
+            // Update the part in the job to show result
+            updateJobPart(
+              jobId,
+              (p) => p.type === 'tool-invocation' && p.toolCallId === part.toolCallId,
+              { state: 'result', result: part.result }
+            );
           }
           toolResults.set(part.toolCallId, {
             toolCallId: part.toolCallId,
@@ -379,10 +400,13 @@ async function processChat(params: {
           break;
 
         case 'source':
-          sources.push({
+          const sourcePart = {
             type: 'source-url',
             ...part.source,
-          });
+          };
+          sources.push(sourcePart);
+          // Add source immediately so UI shows it during streaming
+          addJobPart(jobId, sourcePart);
           break;
 
         case 'finish':
