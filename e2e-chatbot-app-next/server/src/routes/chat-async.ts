@@ -340,15 +340,18 @@ async function processChat(params: {
 
       switch (part.type) {
         case 'text-delta':
-          if (part.textDelta != null) {
-            fullText += part.textDelta;
-            appendJobText(jobId, part.textDelta);
+          // AI SDK uses textDelta, but Databricks provider may use text
+          const textContent = (part as any).textDelta ?? (part as any).text;
+          if (textContent != null) {
+            fullText += textContent;
+            appendJobText(jobId, textContent);
           }
           break;
 
         case 'reasoning':
-          if (part.textDelta != null) {
-            reasoningText += part.textDelta;
+          const reasoningContent = (part as any).textDelta ?? (part as any).text;
+          if (reasoningContent != null) {
+            reasoningText += reasoningContent;
           }
           break;
 
