@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { chatRouter } from './routes/chat';
+import { chatAsyncRouter } from './routes/chat-async';
 import { historyRouter } from './routes/history';
 import { sessionRouter } from './routes/session';
 import { messagesRouter } from './routes/messages';
@@ -52,6 +53,7 @@ app.get('/ping', (_req, res) => {
 
 // API routes
 app.use('/api/chat', chatRouter);
+app.use('/api/chat-async', chatAsyncRouter);
 app.use('/api/history', historyRouter);
 app.use('/api/session', sessionRouter);
 app.use('/api/messages', messagesRouter);

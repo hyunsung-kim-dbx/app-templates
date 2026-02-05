@@ -5,6 +5,7 @@ import { fetcher } from '@/lib/utils';
 interface ConfigResponse {
   features: {
     chatHistory: boolean;
+    useAsyncPolling: boolean;
     useWebSocket: boolean;
   };
 }
@@ -14,6 +15,7 @@ interface AppConfigContextType {
   isLoading: boolean;
   error: Error | undefined;
   chatHistoryEnabled: boolean;
+  useAsyncPolling: boolean;
   useWebSocket: boolean;
 }
 
@@ -39,8 +41,10 @@ export function AppConfigProvider({ children }: { children: ReactNode }) {
     error,
     // Default to true until loaded to avoid breaking existing behavior
     chatHistoryEnabled: data?.features.chatHistory ?? true,
-    // Default to true to enable WebSocket streaming (bypasses proxy timeout)
-    useWebSocket: data?.features.useWebSocket ?? true,
+    // Default to true to enable async polling (bypasses proxy timeout)
+    useAsyncPolling: data?.features.useAsyncPolling ?? true,
+    // WebSocket disabled by default
+    useWebSocket: data?.features.useWebSocket ?? false,
   };
 
   return (
