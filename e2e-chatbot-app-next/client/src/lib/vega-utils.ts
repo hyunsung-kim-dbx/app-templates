@@ -56,6 +56,7 @@ export function extractVegaFromToolOutput(
  */
 export function extractVegaSpec(content: string): ExtractedContent {
   console.log('[Vega] Attempting extraction from content length:', content.length);
+  console.log('[Vega] First 200 chars:', content.substring(0, 200));
 
   // Pattern 1: Vega-Lite code block (preferred format)
   const vegaBlockMatch = content.match(/```vega-lite\s*([\s\S]*?)\s*```/);
@@ -116,21 +117,71 @@ export function extractVegaSpec(content: string): ExtractedContent {
   }
 
   // Pattern 3: Try to find any JSON object that looks like Vega-Lite
-  const braceMatches = [...content.matchAll(/\{[\s\S]*?\}/g)];
-  for (const match of braceMatches) {
-    try {
-      const spec = JSON.parse(match[0]);
-      if (isVegaLiteSpec(spec)) {
-        return {
-          text: content.replace(match[0], '').trim(),
-          vegaSpec: spec,
-        };
-      }
-    } catch {
-      // Not valid JSON, continue
+  // Use a better approach: find all { positions and try parsing from each
+  console.log('[Vega] Trying fallback JSON extraction...');
+  const positions: number[] = [];
+  for (let i = 0; i < content.length; i++) {
+    if (content[i] === '{') {
+      positions.push(i);
     }
   }
 
+  // Try parsing from each { position (longest first for complete objects)
+  for (const pos of positions) {
+    try {
+      // Try to find the matching closing brace by parsing
+      let depth = 0;
+      let endPos = pos;
+      let inString = false;
+      let escapeNext = false;
+
+      for (let i = pos; i < content.length; i++) {
+        const char = content[i];
+
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+
+        if (char === '\\') {
+          escapeNext = true;
+          continue;
+        }
+
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+
+        if (!inString) {
+          if (char === '{') depth++;
+          if (char === '}') {
+            depth--;
+            if (depth === 0) {
+              endPos = i + 1;
+              break;
+            }
+          }
+        }
+      }
+
+      if (endPos > pos) {
+        const possibleJson = content.slice(pos, endPos);
+        const spec = JSON.parse(possibleJson);
+        if (isVegaLiteSpec(spec)) {
+          console.log('[Vega] ✅ Found valid spec via fallback extraction');
+          return {
+            text: content.slice(0, pos).trim() + ' ' + content.slice(endPos).trim(),
+            vegaSpec: spec,
+          };
+        }
+      }
+    } catch {
+      // Not valid JSON from this position, continue
+    }
+  }
+
+  console.log('[Vega] ❌ No valid Vega-Lite spec found in content');
   return { text: content, vegaSpec: null };
 }
 
