@@ -326,13 +326,14 @@ async function processChat(params: {
       },
     });
 
-    // Collect all message parts as they stream (text, tool calls, tool results, etc.)
+    // Collect all message parts as they stream, preserving order
     const messageId = generateUUID();
-    let fullText = '';
+
+    // Track ordered parts as they stream (text, tool calls, etc.)
+    const orderedParts: JobMessagePart[] = [];
+    let currentTextPart: { type: 'text', text: string } | null = null;
+    let reasoningPart: { type: 'reasoning', text: string } | null = null;
     const toolCalls: Map<string, any> = new Map();
-    const toolResults: Map<string, any> = new Map();
-    let reasoningText = '';
-    const sources: any[] = [];
 
     // Track all part types seen for debugging
     const partTypesSeen = new Set<string>();
@@ -352,50 +353,64 @@ async function processChat(params: {
       }
 
       switch (part.type) {
-        case 'text-delta':
+        case 'text-delta': {
           // AI SDK uses textDelta, but Databricks provider may use text
           const textContent = (part as any).textDelta ?? (part as any).text;
           if (textContent != null) {
-            fullText += textContent;
+            // Accumulate into current text part, or create new one
+            if (!currentTextPart) {
+              currentTextPart = { type: 'text', text: '' };
+              orderedParts.push(currentTextPart);
+            }
+            currentTextPart.text += textContent;
             appendJobText(jobId, textContent);
           }
           break;
+        }
 
-        case 'reasoning':
+        case 'reasoning': {
           const reasoningContent = (part as any).textDelta ?? (part as any).text;
           if (reasoningContent != null) {
-            reasoningText += reasoningContent;
+            // Reasoning always goes at the beginning, create if not exists
+            if (!reasoningPart) {
+              reasoningPart = { type: 'reasoning', text: '' };
+              // Insert at beginning of orderedParts
+              orderedParts.unshift(reasoningPart);
+              addJobPart(jobId, reasoningPart);
+            }
+            reasoningPart.text += reasoningContent;
             // Update reasoning part in job for live display
             updateJobPart(
               jobId,
               (p) => p.type === 'reasoning',
-              { text: reasoningText }
+              { text: reasoningPart.text }
             );
-            // If no reasoning part exists yet, add one
-            const job = getJob(jobId);
-            if (job && !job.parts.some(p => p.type === 'reasoning')) {
-              addJobPart(jobId, { type: 'reasoning', text: reasoningText });
-            }
           }
           break;
+        }
 
-        case 'tool-call':
+        case 'tool-call': {
           console.log(`[AsyncChat] TOOL CALL DETECTED: ${(part as any).toolName}`, JSON.stringify(part).slice(0, 300));
+          // Finalize any pending text before tool call
+          currentTextPart = null;
+
           const toolCallPart = {
             type: 'dynamic-tool',  // UI expects 'dynamic-tool' not 'tool-invocation'
             toolCallId: (part as any).toolCallId,
             toolName: (part as any).toolName,
             input: (part as any).args,  // UI uses 'input' not 'args'
-            state: 'call',
+            state: 'input-available',  // Valid ToolState for UI to show parameters
           };
           toolCalls.set((part as any).toolCallId, toolCallPart);
+          orderedParts.push(toolCallPart);
           // Add tool call immediately so UI shows it during streaming
           addJobPart(jobId, toolCallPart);
           console.log(`[AsyncChat] Tool call added to job parts, total toolCalls: ${toolCalls.size}`);
           break;
+        }
 
-        case 'tool-result':
-          // Update the tool call with the result
+        case 'tool-result': {
+          // Update the existing tool call part in orderedParts (already added)
           const existingCall = toolCalls.get(part.toolCallId);
           if (existingCall) {
             existingCall.state = 'output-available';  // UI expects 'output-available' not 'result'
@@ -407,34 +422,35 @@ async function processChat(params: {
               { state: 'output-available', output: part.result }
             );
           }
-          toolResults.set(part.toolCallId, {
-            toolCallId: part.toolCallId,
-            result: part.result,
-          });
           break;
+        }
 
-        case 'source':
+        case 'source': {
           const sourcePart = {
             type: 'source-url',
             ...part.source,
           };
-          sources.push(sourcePart);
+          orderedParts.push(sourcePart);
           // Add source immediately so UI shows it during streaming
           addJobPart(jobId, sourcePart);
           break;
+        }
 
         case 'finish':
           finishReason = part.finishReason;
           break;
 
-        case 'step-start':
+        case 'step-start': {
           // Agent step starting - add to parts for UI
           console.log(`[AsyncChat] Step started:`, JSON.stringify(part).slice(0, 500));
-          addJobPart(jobId, {
+          const stepStartPart = {
             type: 'step-start',
             ...(part as any),
-          });
+          };
+          orderedParts.push(stepStartPart);
+          addJobPart(jobId, stepStartPart);
           break;
+        }
 
         case 'step-finish':
         case 'finish-step':
@@ -460,8 +476,12 @@ async function processChat(params: {
     // Wait for completion
     await result.response;
 
+    // Get accumulated text for fallback check
+    const fullText = currentTextPart?.text || '';
+    const reasoningText = reasoningPart?.text || '';
+
     // Debug: Log accumulated content
-    console.log(`[AsyncChat] Stream finished - fullText length: ${fullText.length}, reasoning length: ${reasoningText.length}, toolCalls: ${toolCalls.size}, sources: ${sources.length}`);
+    console.log(`[AsyncChat] Stream finished - fullText length: ${fullText.length}, reasoning length: ${reasoningText.length}, toolCalls: ${toolCalls.size}, orderedParts: ${orderedParts.length}`);
     if (fullText.length > 0) {
       console.log(`[AsyncChat] fullText preview: ${fullText.slice(0, 200)}`);
     }
@@ -472,36 +492,17 @@ async function processChat(params: {
       console.log(`[AsyncChat] result.text length: ${resultText?.length || 0}`);
       if (resultText && !fullText) {
         console.log(`[AsyncChat] Using result.text as fallback`);
-        fullText = resultText;
+        // Add fallback text to orderedParts
+        orderedParts.push({ type: 'text', text: resultText });
       }
     } catch (e) {
       console.log(`[AsyncChat] result.text not available: ${e}`);
     }
 
-    // Build message parts in correct order
-    const parts: JobMessagePart[] = [];
+    // Use orderedParts directly - they are already in stream order
+    const parts: JobMessagePart[] = orderedParts;
 
-    // Add reasoning first if present
-    if (reasoningText) {
-      parts.push({ type: 'reasoning', text: reasoningText });
-    }
-
-    // Add text content
-    if (fullText) {
-      parts.push({ type: 'text', text: fullText });
-    }
-
-    // Add sources after text
-    for (const source of sources) {
-      parts.push(source);
-    }
-
-    // Add tool invocations (with results)
-    for (const toolCall of toolCalls.values()) {
-      parts.push(toolCall);
-    }
-
-    // Update job with final parts
+    // Update job with final parts (preserving stream order)
     setJobParts(jobId, parts);
 
     // Save message to database (only if DB available)

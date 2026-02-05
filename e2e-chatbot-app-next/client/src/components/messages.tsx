@@ -88,7 +88,7 @@ function PureMessages({
     const container = messagesContainerRef.current;
     container?.addEventListener('scroll', handleScroll);
 
-    // Auto-scroll every 50ms during streaming
+    // Auto-scroll every 10ms during streaming
     const scrollInterval = setInterval(() => {
       const container = messagesContainerRef.current;
       if (container && !userScrolledUp) {
@@ -97,7 +97,7 @@ function PureMessages({
           behavior: 'instant',
         });
       }
-    }, 50);
+    }, 10);
 
     return () => {
       clearInterval(scrollInterval);

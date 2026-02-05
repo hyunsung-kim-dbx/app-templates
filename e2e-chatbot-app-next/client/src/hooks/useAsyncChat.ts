@@ -44,7 +44,7 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
     selectedVisibilityType = 'private',
     onFinish,
     onError,
-    pollingInterval = 50, // Poll every 50ms for ultra-smooth streaming
+    pollingInterval = 10, // Poll every 10ms for ultra-smooth streaming
   } = options;
 
   // Ensure initialMessages is always an array
