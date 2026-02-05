@@ -33,7 +33,7 @@ function toV3Usage(usage: LanguageModelUsage): LanguageModelV3Usage {
 
 /**
  * Filters out incomplete tool calls from messages.
- * Tool calls without results (state !== 'output-available' or missing output)
+ * Tool calls without results (state !== 'output-available' or missing output/result)
  * cause MissingToolResultsError when sent to the AI SDK.
  * This happens when a previous request timed out mid-tool-execution.
  */
@@ -43,14 +43,16 @@ function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
       return message;
     }
 
-    // Filter out dynamic-tool parts that don't have output
+    // Filter out dynamic-tool parts that don't have output/result
     const filteredParts = message.parts.filter((part: any) => {
       if (part.type === 'dynamic-tool') {
-        const hasOutput = part.state === 'output-available' && part.output !== undefined;
-        if (!hasOutput) {
+        // Check for both 'output' and 'result' as either could be present
+        const hasResult = part.state === 'output-available' &&
+          (part.output !== undefined || part.result !== undefined);
+        if (!hasResult) {
           console.log(`[Chat] Filtering incomplete tool call: ${part.toolName} (${part.toolCallId})`);
         }
-        return hasOutput;
+        return hasResult;
       }
       return true;
     });

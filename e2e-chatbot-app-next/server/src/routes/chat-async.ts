@@ -72,7 +72,7 @@ function toV3Usage(usage: LanguageModelUsage): LanguageModelV3Usage {
 
 /**
  * Filters out incomplete tool calls from messages.
- * Tool calls without results (state !== 'output-available' or missing output)
+ * Tool calls without results (state !== 'output-available' or missing output/result)
  * cause MissingToolResultsError when sent to the AI SDK.
  * This happens when a previous request timed out mid-tool-execution.
  */
@@ -82,19 +82,21 @@ function filterIncompleteToolCalls(messages: ChatMessage[]): ChatMessage[] {
       return message;
     }
 
-    // Filter out dynamic-tool parts that don't have output
+    // Filter out dynamic-tool parts that don't have output/result
     const filteredParts = message.parts.filter((part: any) => {
       if (part.type === 'dynamic-tool') {
-        const hasOutput = part.state === 'output-available' && part.output !== undefined;
-        if (!hasOutput) {
+        // Check for both 'output' and 'result' as either could be present
+        const hasResult = part.state === 'output-available' &&
+          (part.output !== undefined || part.result !== undefined);
+        if (!hasResult) {
           console.log(`[AsyncChat] Filtering incomplete tool call: ${part.toolName} (${part.toolCallId})`);
         }
-        return hasOutput;
+        return hasResult;
       }
       return true;
     });
 
-    // If all parts were filtered out, return message with empty parts
+    // If all parts were filtered out, return message with placeholder
     // This prevents empty assistant messages which can also cause issues
     if (filteredParts.length === 0 && message.parts.length > 0) {
       console.log(`[AsyncChat] All parts filtered from message ${message.id}, adding placeholder`);
@@ -438,14 +440,18 @@ async function processChat(params: {
           // Finalize any pending text before tool call
           currentTextPart = null;
 
+          const toolCallId = (part as any).toolCallId;
           const toolCallPart = {
             type: 'dynamic-tool',  // UI expects 'dynamic-tool' not 'tool-invocation'
-            toolCallId: (part as any).toolCallId,
+            // Include all fields needed for convertToModelMessages
+            id: toolCallId,  // Required for model message conversion
+            toolCallId,
             toolName: (part as any).toolName,
-            input: (part as any).input,  // AI SDK uses 'input' for tool args
+            args: (part as any).args ?? (part as any).input,  // AI SDK uses 'args', fallback to 'input'
+            input: (part as any).input,  // Keep for backward compatibility
             state: 'input-available',  // Valid ToolState for UI to show parameters
           };
-          toolCalls.set((part as any).toolCallId, toolCallPart);
+          toolCalls.set(toolCallId, toolCallPart);
           orderedParts.push(toolCallPart);
           // Add tool call immediately so UI shows it during streaming
           addJobPart(jobId, toolCallPart);
@@ -457,13 +463,15 @@ async function processChat(params: {
           // Update the existing tool call part in orderedParts (already added)
           const existingCall = toolCalls.get((part as any).toolCallId);
           if (existingCall) {
+            const resultOutput = (part as any).result ?? (part as any).output;
             existingCall.state = 'output-available';
-            existingCall.output = (part as any).output;  // AI SDK uses 'output'
+            existingCall.result = resultOutput;  // AI SDK expects 'result'
+            existingCall.output = resultOutput;  // Keep for UI compatibility
             // Update the part in the job to show result
             updateJobPart(
               jobId,
               (p) => p.type === 'dynamic-tool' && p.toolCallId === (part as any).toolCallId,
-              { state: 'output-available', output: (part as any).output }
+              { state: 'output-available', result: resultOutput, output: resultOutput }
             );
           }
           break;
