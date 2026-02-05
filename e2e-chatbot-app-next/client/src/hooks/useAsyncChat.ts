@@ -44,7 +44,7 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
     selectedVisibilityType = 'private',
     onFinish,
     onError,
-    pollingInterval = 300, // Poll every 300ms (balanced between smoothness and resource usage)
+    pollingInterval = 500, // Poll every 500ms - client-side typewriter handles smooth appearance
   } = options;
 
   // Ensure initialMessages is always an array

@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
 import React, { memo, useState } from 'react';
 import { AnimatedAssistantIcon } from './animation-assistant-icon';
-import { Response } from './elements/response';
+import { Response, StreamingResponse } from './elements/response';
 import { MessageContent } from './elements/message';
 import {
   Tool,
@@ -206,7 +206,13 @@ const PurePreviewMessage = ({
                           : undefined
                       }
                     >
-                      <Response>{cleanedText}</Response>
+                      {message.role === 'assistant' && isLoading ? (
+                        <StreamingResponse isStreaming={isLoading} charsPerFrame={4}>
+                          {cleanedText}
+                        </StreamingResponse>
+                      ) : (
+                        <Response>{cleanedText}</Response>
+                      )}
                       {vegaSpecs.map((spec, idx) => (
                         <VegaChart key={idx} spec={spec} />
                       ))}
