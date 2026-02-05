@@ -2,12 +2,18 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import type { ChatMessage } from '@chat-template/core';
 import { generateUUID } from '@/lib/utils';
 
+interface MessagePart {
+  type: string;
+  [key: string]: any;
+}
+
 interface JobStatus {
   jobId: string;
   chatId: string;
   status: 'pending' | 'streaming' | 'completed' | 'error';
   messageId: string | null;
   partialText: string;
+  parts: MessagePart[];
   partsReceived: number;
   finishReason: string | null;
   error: string | null;
@@ -111,10 +117,17 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
       // Update last update time
       lastUpdateTimeRef.current = Date.now();
 
-      // Update partial text if new content
+      // Update message parts if new content
       if (jobStatus.partsReceived > lastPartsReceivedRef.current) {
         lastPartsReceivedRef.current = jobStatus.partsReceived;
         setPartialText(jobStatus.partialText);
+
+        // Use parts array if available, fallback to partialText
+        const streamingParts = jobStatus.parts?.length > 0
+          ? jobStatus.parts
+          : jobStatus.partialText
+            ? [{ type: 'text', text: jobStatus.partialText }]
+            : [];
 
         // Update streaming message in messages array
         setMessages(prev => {
@@ -123,7 +136,7 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
             const updated = [...prev];
             updated[lastIdx] = {
               ...updated[lastIdx],
-              parts: [{ type: 'text', text: jobStatus.partialText }],
+              parts: streamingParts,
             };
             return updated;
           }
@@ -138,11 +151,18 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
         setStatus('idle');
         setCurrentJobId(null);
 
-        // Finalize the message
+        // Use parts array if available, fallback to partialText
+        const finalParts = jobStatus.parts?.length > 0
+          ? jobStatus.parts
+          : jobStatus.partialText
+            ? [{ type: 'text', text: jobStatus.partialText }]
+            : [];
+
+        // Finalize the message with all parts (text, tool calls, tool results, etc.)
         const finalMessage: ChatMessage = {
           id: jobStatus.messageId || generateUUID(),
           role: 'assistant',
-          parts: [{ type: 'text', text: jobStatus.partialText }],
+          parts: finalParts,
           createdAt: new Date(),
           attachments: [],
         };

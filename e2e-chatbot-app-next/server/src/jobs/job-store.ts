@@ -3,6 +3,12 @@
  * Jobs track the status of background chat operations
  */
 
+// Message part types that can be accumulated during streaming
+export interface JobMessagePart {
+  type: string;
+  [key: string]: any;
+}
+
 export interface ChatJob {
   id: string;
   chatId: string;
@@ -11,9 +17,11 @@ export interface ChatJob {
   error: string | null;
   createdAt: Date;
   updatedAt: Date;
-  // Partial text accumulated during streaming
+  // Partial text accumulated during streaming (for backward compatibility)
   partialText: string;
-  // Number of parts received
+  // Full message parts (text, tool calls, tool results, reasoning, etc.)
+  parts: JobMessagePart[];
+  // Number of updates received
   partsReceived: number;
   // Finish reason when completed
   finishReason: string | null;
@@ -36,6 +44,7 @@ export function createJob(jobId: string, chatId: string): ChatJob {
     createdAt: new Date(),
     updatedAt: new Date(),
     partialText: '',
+    parts: [],
     partsReceived: 0,
     finishReason: null,
   };
@@ -93,6 +102,57 @@ export function appendJobText(jobId: string, text: string): void {
   const job = jobs.get(jobId);
   if (job) {
     job.partialText += text;
+    job.partsReceived++;
+    job.updatedAt = new Date();
+
+    // Also update or create text part in parts array
+    const existingTextPart = job.parts.find(p => p.type === 'text');
+    if (existingTextPart) {
+      existingTextPart.text = job.partialText;
+    } else {
+      job.parts.push({ type: 'text', text: job.partialText });
+    }
+  }
+}
+
+/**
+ * Add a message part to the job (tool call, tool result, reasoning, etc.)
+ */
+export function addJobPart(jobId: string, part: JobMessagePart): void {
+  const job = jobs.get(jobId);
+  if (job) {
+    job.parts.push(part);
+    job.partsReceived++;
+    job.updatedAt = new Date();
+  }
+}
+
+/**
+ * Update an existing part by matching criteria (e.g., toolCallId)
+ */
+export function updateJobPart(
+  jobId: string,
+  matcher: (part: JobMessagePart) => boolean,
+  updates: Partial<JobMessagePart>
+): void {
+  const job = jobs.get(jobId);
+  if (job) {
+    const part = job.parts.find(matcher);
+    if (part) {
+      Object.assign(part, updates);
+      job.partsReceived++;
+      job.updatedAt = new Date();
+    }
+  }
+}
+
+/**
+ * Set the final parts array (used when stream completes)
+ */
+export function setJobParts(jobId: string, parts: JobMessagePart[]): void {
+  const job = jobs.get(jobId);
+  if (job) {
+    job.parts = parts;
     job.partsReceived++;
     job.updatedAt = new Date();
   }

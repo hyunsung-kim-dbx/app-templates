@@ -45,8 +45,11 @@ import {
   getJob,
   updateJobStatus,
   appendJobText,
+  addJobPart,
+  setJobParts,
   completeJob,
   failJob,
+  type JobMessagePart,
 } from '../jobs/job-store';
 
 // Convert ai's LanguageModelUsage to @ai-sdk/provider's LanguageModelV3Usage
@@ -218,6 +221,7 @@ chatAsyncRouter.get(
       status: job.status,
       messageId: job.messageId,
       partialText: job.partialText,
+      parts: job.parts,
       partsReceived: job.partsReceived,
       finishReason: job.finishReason,
       error: job.error,
@@ -321,23 +325,90 @@ async function processChat(params: {
       },
     });
 
-    // Collect text as it streams
+    // Collect all message parts as they stream (text, tool calls, tool results, etc.)
     const messageId = generateUUID();
     let fullText = '';
+    const toolCalls: Map<string, any> = new Map();
+    const toolResults: Map<string, any> = new Map();
+    let reasoningText = '';
+    const sources: any[] = [];
 
-    for await (const chunk of result.textStream) {
-      fullText += chunk;
-      appendJobText(jobId, chunk);
+    // Use fullStream to capture all part types
+    for await (const part of result.fullStream) {
+      switch (part.type) {
+        case 'text-delta':
+          fullText += part.textDelta;
+          appendJobText(jobId, part.textDelta);
+          break;
+
+        case 'reasoning':
+          reasoningText += part.textDelta;
+          break;
+
+        case 'tool-call':
+          toolCalls.set(part.toolCallId, {
+            type: 'tool-invocation',
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            args: part.args,
+            state: 'call',
+          });
+          break;
+
+        case 'tool-result':
+          // Update the tool call with the result
+          const existingCall = toolCalls.get(part.toolCallId);
+          if (existingCall) {
+            existingCall.state = 'result';
+            existingCall.result = part.result;
+          }
+          toolResults.set(part.toolCallId, {
+            toolCallId: part.toolCallId,
+            result: part.result,
+          });
+          break;
+
+        case 'source':
+          sources.push({
+            type: 'source-url',
+            ...part.source,
+          });
+          break;
+
+        case 'finish':
+          finishReason = part.finishReason;
+          break;
+      }
     }
 
     // Wait for completion
     await result.response;
 
-    // Build message parts
-    const parts: any[] = [];
+    // Build message parts in correct order
+    const parts: JobMessagePart[] = [];
+
+    // Add reasoning first if present
+    if (reasoningText) {
+      parts.push({ type: 'reasoning', text: reasoningText });
+    }
+
+    // Add text content
     if (fullText) {
       parts.push({ type: 'text', text: fullText });
     }
+
+    // Add sources after text
+    for (const source of sources) {
+      parts.push(source);
+    }
+
+    // Add tool invocations (with results)
+    for (const toolCall of toolCalls.values()) {
+      parts.push(toolCall);
+    }
+
+    // Update job with final parts
+    setJobParts(jobId, parts);
 
     // Save message to database (only if DB available)
     if (dbAvailable && parts.length > 0) {
