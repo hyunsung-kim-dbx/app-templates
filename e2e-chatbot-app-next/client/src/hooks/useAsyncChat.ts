@@ -320,10 +320,18 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
     };
   }, [stopPolling]);
 
-  // Update messages when initialMessages change
+  // Update messages when initialMessages change (only on actual content change)
+  const initialMessagesRef = useRef<string>('');
   useEffect(() => {
-    setMessages(safeInitialMessages);
-  }, [safeInitialMessages]);
+    const key = JSON.stringify(safeInitialMessages.map(m => m.id));
+    if (key !== initialMessagesRef.current) {
+      initialMessagesRef.current = key;
+      // Only reset if we're not currently streaming (avoid interrupting active conversations)
+      if (status === 'idle') {
+        setMessages(safeInitialMessages);
+      }
+    }
+  }, [safeInitialMessages, status]);
 
   return {
     messages,

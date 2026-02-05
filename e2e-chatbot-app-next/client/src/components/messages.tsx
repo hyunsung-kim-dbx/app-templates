@@ -66,38 +66,45 @@ function PureMessages({
   useEffect(() => {
     if (status !== 'streaming') return;
 
-    let userScrolledUp = false;
-    let userInteracting = false;
-
-    const handleWheelStart = () => { userInteracting = true; };
-    const handleTouchStart = () => { userInteracting = true; };
+    let userPausedAutoScroll = false;
+    let lastScrollTop = 0;
 
     const handleScroll = () => {
       const container = messagesContainerRef.current;
-      if (!container || !userInteracting) return;
+      if (!container) return;
 
-      const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 100;
-      userScrolledUp = !isAtBottom;
-      userInteracting = false;
+      const currentScrollTop = container.scrollTop;
+      const isAtBottom = currentScrollTop + container.clientHeight >= container.scrollHeight - 150;
+
+      // User scrolled UP manually - pause auto-scroll
+      if (currentScrollTop < lastScrollTop - 10) {
+        userPausedAutoScroll = true;
+      }
+
+      // User scrolled back to bottom - resume auto-scroll
+      if (isAtBottom && userPausedAutoScroll) {
+        userPausedAutoScroll = false;
+      }
+
+      lastScrollTop = currentScrollTop;
     };
 
     const container = messagesContainerRef.current;
-    container?.addEventListener('scroll', handleScroll);
-    container?.addEventListener('wheel', handleWheelStart, { passive: true });
-    container?.addEventListener('touchstart', handleTouchStart, { passive: true });
+    if (container) {
+      lastScrollTop = container.scrollTop;
+    }
+    container?.addEventListener('scroll', handleScroll, { passive: true });
 
-    // Auto-scroll every 10ms during streaming (if user hasn't scrolled up)
+    // Auto-scroll every 50ms during streaming (if user hasn't scrolled up)
     const scrollInterval = setInterval(() => {
-      if (container && !userScrolledUp && !userInteracting) {
+      if (container && !userPausedAutoScroll) {
         container.scrollTo({ top: container.scrollHeight, behavior: 'instant' });
       }
-    }, 10);
+    }, 50);
 
     return () => {
       clearInterval(scrollInterval);
       container?.removeEventListener('scroll', handleScroll);
-      container?.removeEventListener('wheel', handleWheelStart);
-      container?.removeEventListener('touchstart', handleTouchStart);
     };
   }, [status, messagesContainerRef]);
 
