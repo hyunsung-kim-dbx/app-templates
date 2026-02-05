@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import embed, { type VisualizationSpec } from 'vega-embed';
 import { cn } from '@/lib/utils';
 
