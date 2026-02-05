@@ -64,6 +64,13 @@ import { setRequestContext } from '@chat-template/ai-sdk-providers';
 
 export const chatRouter: RouterType = Router();
 
+// Streaming configuration to prevent connection issues
+const STREAM_CONFIG = {
+  MAX_RESPONSE_SIZE: Number.parseInt(process.env.MAX_RESPONSE_SIZE || '50000', 10), // 50K chars per message
+  MAX_MESSAGE_CHUNKS: Number.parseInt(process.env.MAX_MESSAGE_CHUNKS || '5', 10), // Max messages to split into
+  STREAM_TIMEOUT_MS: Number.parseInt(process.env.STREAM_TIMEOUT_MS || '300000', 10), // 5 minutes default
+};
+
 const streamCache = new StreamCache();
 // Apply auth middleware to all chat routes
 chatRouter.use(authMiddleware);
@@ -255,27 +262,78 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
     /**
      * We manually create the stream to have access to the stream writer.
      * This allows us to inject custom stream parts like data-error.
+     *
+     * Added response chunking to split large responses into multiple messages.
      */
+    let totalCharsInCurrentMessage = 0;
+    let messageChunkCount = 0;
+
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
-        writer.merge(
-          result.toUIMessageStream({
+        // Wrap the stream to split large responses into multiple messages
+        const chunkingStream = async function* () {
+          for await (const part of result.toUIMessageStream({
             originalMessages: uiMessages,
             generateMessageId: generateUUID,
             sendReasoning: true,
             sendSources: true,
             onError: (error) => {
               console.error('Stream error:', error);
-
               const errorMessage =
                 error instanceof Error ? error.message : JSON.stringify(error);
-
-              writer.write({ type: 'data-error', data: errorMessage });
-
               return errorMessage;
             },
-          }),
-        );
+          })) {
+            // Monitor text size in current message
+            if (part.type === 'text' && typeof part.text === 'string') {
+              totalCharsInCurrentMessage += part.text.length;
+
+              // Check if we should split into a new message
+              if (totalCharsInCurrentMessage > STREAM_CONFIG.MAX_RESPONSE_SIZE) {
+                messageChunkCount++;
+
+                // Check if we've hit the max chunks limit
+                if (messageChunkCount >= STREAM_CONFIG.MAX_MESSAGE_CHUNKS) {
+                  console.warn(`Response split into ${messageChunkCount} messages (max: ${STREAM_CONFIG.MAX_MESSAGE_CHUNKS} reached). Truncating further content.`);
+                  yield {
+                    type: 'text',
+                    text: '\n\n_[Response continues but was truncated to prevent overload. Please ask for a more focused query.]_',
+                  };
+                  break;
+                }
+
+                console.log(`Response size exceeded ${STREAM_CONFIG.MAX_RESPONSE_SIZE} chars. Splitting into message chunk ${messageChunkCount + 1}`);
+
+                // Add continuation indicator
+                yield {
+                  type: 'text',
+                  text: '\n\n_[Continuing in next message...]_',
+                };
+
+                // Finish current message
+                yield { type: 'finish', finishReason: 'stop' };
+
+                // Reset counter for new message
+                totalCharsInCurrentMessage = 0;
+
+                // Add continuation header to new message
+                yield {
+                  type: 'text',
+                  text: `_[Continued from previous message (${messageChunkCount + 1}/${STREAM_CONFIG.MAX_MESSAGE_CHUNKS})]_\n\n`,
+                };
+              }
+            }
+
+            yield part;
+          }
+
+          // Log final stats
+          if (messageChunkCount > 0) {
+            console.log(`Response was split into ${messageChunkCount + 1} total messages`);
+          }
+        };
+
+        writer.merge(chunkingStream());
       },
       onFinish: async ({ responseMessage }) => {
         console.log(
