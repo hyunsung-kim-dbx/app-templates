@@ -42,6 +42,8 @@ export function VegaChart({ spec, className }: VegaChartProps) {
             editor: false,
           },
           renderer: 'svg',
+          // Suppress version mismatch warnings (v5 specs work fine with v6)
+          logLevel: 2, // ERROR level only (suppresses WARN)
         });
 
         setIsLoading(false);
@@ -59,12 +61,10 @@ export function VegaChart({ spec, className }: VegaChartProps) {
 
     renderChart();
 
-    // Cleanup
+    // Cleanup - let Vega handle its own cleanup
     return () => {
-      // Only clear if component is unmounting, not on re-render
-      if (containerRef.current && !renderInProgressRef.current) {
-        containerRef.current.innerHTML = '';
-      }
+      // Don't manually clear innerHTML - let vega-embed handle cleanup
+      // This prevents React DOM errors when trying to remove already-removed nodes
     };
   }, [spec]);
 
