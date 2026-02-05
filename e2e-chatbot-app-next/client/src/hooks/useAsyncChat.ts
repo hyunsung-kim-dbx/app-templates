@@ -44,7 +44,7 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
     selectedVisibilityType = 'private',
     onFinish,
     onError,
-    pollingInterval = 10, // Poll every 10ms for ultra-smooth streaming
+    pollingInterval = 300, // Poll every 300ms (balanced between smoothness and resource usage)
   } = options;
 
   // Ensure initialMessages is always an array
@@ -107,10 +107,20 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
         if (timeSinceLastUpdate > STALE_JOB_TIMEOUT_MS) {
           console.error('[AsyncChat] Job appears stale, stopping polling:', jobId);
           stopPolling();
-          setStatus('error');
+          setStatus('idle'); // Reset to idle so user can send new messages
           setCurrentJobId(null);
           const err = new Error('Request timed out. Please try again.');
           setError(err);
+
+          // Remove streaming placeholder message on timeout
+          setMessages(prev => {
+            const lastIdx = prev.length - 1;
+            if (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && prev[lastIdx].id.includes('-streaming')) {
+              return prev.slice(0, lastIdx);
+            }
+            return prev;
+          });
+
           onError?.(err);
         }
         return;
@@ -192,11 +202,21 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
       if (jobStatus.status === 'error') {
         console.error('[AsyncChat] Job failed:', jobStatus.error);
         stopPolling();
-        setStatus('error');
+        setStatus('idle'); // Reset to idle so user can send new messages
         setCurrentJobId(null);
 
         const err = new Error(jobStatus.error || 'Chat failed');
         setError(err);
+
+        // Remove streaming placeholder message on error
+        setMessages(prev => {
+          const lastIdx = prev.length - 1;
+          if (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && prev[lastIdx].id.includes('-streaming')) {
+            return prev.slice(0, lastIdx);
+          }
+          return prev;
+        });
+
         onError?.(err);
       }
     }, pollingInterval);
