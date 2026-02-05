@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node ../node_modules/tsx/dist/cli.mjs watch --inspect src/index.ts",
-    "build": "tsdown",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --packages=external",
     "start": "NODE_ENV=production node --env-file-if-exists ../.env dist/index.mjs"
   },
   "dependencies": {
@@ -25,6 +25,7 @@
     "@types/express": "^5.0.4",
     "@types/node": "^22.8.6",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.27.2",
     "tsdown": "^0.16.0",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3"
