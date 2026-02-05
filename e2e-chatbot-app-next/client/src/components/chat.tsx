@@ -62,10 +62,6 @@ export function Chat({
   const lastPartRef = useRef<UIMessageChunk | undefined>(lastPart);
   lastPartRef.current = lastPart;
 
-  // Single counter for resume attempts - reset when stream parts are received
-  const resumeAttemptCountRef = useRef(0);
-  const maxResumeAttempts = 3;
-
   const abortController = useRef<AbortController | null>(new AbortController());
   useEffect(() => {
     return () => {
@@ -115,9 +111,6 @@ export function Chat({
           fetchChatHistory();
           didFetchHistoryOnNewChat.current = true;
         }
-        // Reset resume attempts when we successfully receive stream parts
-        resumeAttemptCountRef.current = 0;
-
         // Keep track of the number of stream parts received
         setStreamCursor((cursor) => {
           console.log('[ChatTransport] Stream cursor:', cursor, '->', cursor + 1);
@@ -218,36 +211,26 @@ export function Chat({
         return;
       }
 
-      // Determine if we should attempt to resume:
-      // 1. Stream didn't end with a 'finish' part (incomplete)
-      // 2. It was a disconnect/error that terminated the stream
-      // 3. We haven't exceeded max resume attempts
-      const streamIncomplete = lastPartRef.current?.type !== 'finish';
-      const shouldResume =
-        streamIncomplete &&
-        (isDisconnect || isError || lastPartRef.current === undefined);
+      // RESUME DISABLED: Always complete the stream gracefully
+      // Show whatever content we received, don't try to resume
+      console.log('[Chat onFinish] Stream ended:', {
+        isComplete: lastPartRef.current?.type === 'finish',
+        isDisconnect,
+        isError,
+        receivedParts: streamCursor,
+      });
 
-      if (shouldResume && resumeAttemptCountRef.current < maxResumeAttempts) {
-        console.log(
-          '[Chat onFinish] Resuming stream. Attempt:',
-          resumeAttemptCountRef.current + 1,
-        );
-        resumeAttemptCountRef.current++;
-        try {
-          resumeStream();
-        } catch (err) {
-          console.error('[Chat onFinish] Failed to resume stream:', err);
-          // If resume fails, just finish normally
-          setStreamCursor(0);
-          fetchChatHistory();
-        }
-      } else {
-        // Stream completed normally or we've exhausted resume attempts
-        if (resumeAttemptCountRef.current >= maxResumeAttempts) {
-          console.warn('[Chat onFinish] Max resume attempts reached');
-        }
-        setStreamCursor(0);
-        fetchChatHistory();
+      // Always complete gracefully - show what we have
+      setStreamCursor(0);
+      fetchChatHistory();
+
+      // If stream was incomplete due to network error, show a toast
+      if ((isDisconnect || isError) && lastPartRef.current?.type !== 'finish') {
+        console.warn('[Chat onFinish] Stream interrupted, showing partial results');
+        toast({
+          type: 'warning',
+          description: 'Response was interrupted. Showing partial results. You can try sending your message again.',
+        });
       }
     },
     onError: (error) => {
