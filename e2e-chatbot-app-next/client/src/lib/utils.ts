@@ -66,29 +66,36 @@ export function sanitizeText(text: string) {
   let result = text.replace('<has_function_call>', '');
 
   // Fix inline markdown tables that are missing line breaks
-  // Tables look like: | col1 | col2 | followed by |---|---| followed by | val1 | val2 |
-  // When concatenated: text| | col | |---| | val |more text
+  // Agent outputs tables like: "name| | col1 | col2 | |---:|:---| | 0 | val1 | | 1 | val2 |nexttext"
 
-  // Step 1: Add newline before table start (text followed by | |)
-  // Pattern: non-pipe char followed by "| |" or "| col" (start of table)
-  result = result.replace(/([^\n|\s])(\| *\||\| *[a-zA-Z_])/g, '$1\n\n$2');
+  // Step 1: Add newline before table start
+  // Pattern: word characters followed directly by "| |" (table with index column)
+  result = result.replace(/(\w)(\| *\| *\w)/g, '$1\n\n$2');
 
-  // Step 2: Add newlines between table rows
-  // Pattern: | followed by | | (row boundary) - but not |---|
-  result = result.replace(/\| *\| *\|(?!-)/g, '|\n|');
+  // Step 2: Add newline before separator row (|---| or |:---|)
+  result = result.replace(/\| *(\|[-:]+)/g, '|\n$1');
 
-  // Step 3: Add newline after separator row (|---|...|)
-  result = result.replace(/(\|[-:\s|]+\|)(?=\s*\|)/g, '$1\n');
+  // Step 3: Add newline after separator row, before data rows
+  result = result.replace(/([-:]\|) *(\| *[\d\w])/g, '$1\n$2');
 
-  // Step 4: Add newline after table end (| followed by non-table text)
-  // Pattern: | followed by non-pipe, non-space start of text
-  result = result.replace(/\|([^\n|\s-][^\n|]*)/g, (match, afterPipe) => {
-    // Don't break if it looks like table content (starts with space or is short)
-    if (afterPipe.match(/^[\s\d]/) || afterPipe.length < 3) {
-      return match;
+  // Step 4: Add newlines between data rows
+  // Pattern: "| |" followed by a number (new row with index)
+  result = result.replace(/\| *\| *(\d)/g, '|\n| $1');
+
+  // Step 5: Add newline after table ends (| followed by letter that starts a word, not a table cell)
+  // Look for pattern: |<space>word where word is not a table continuation
+  result = result.replace(/\| *([a-zA-Z\u3131-\uD79D]{2,})/g, (match, word) => {
+    // If it looks like a table cell value (short, single word), keep it
+    // If it looks like start of a sentence (Korean, longer text), add newline
+    if (word.length > 10 || /[\u3131-\uD79D]/.test(word)) {
+      return `|\n\n${word}`;
     }
-    return `|\n\n${afterPipe}`;
+    return match;
   });
+
+  // Step 6: Clean up agent/step names that appear before tables or text
+  // Pattern: word-with-dashes immediately followed by newline and table/text
+  result = result.replace(/([a-z]+-[a-z]+-[a-z]+)\n\n/gi, '$1\n\n---\n\n');
 
   // Clean up excessive newlines (more than 2 consecutive)
   result = result.replace(/\n{3,}/g, '\n\n');
