@@ -299,9 +299,17 @@ chatRouter.post('/', requireAuth, async (req: Request, res: Response) => {
           finishReason = streamFinishReason;
         }
 
-        // Log if response was truncated due to token limit
+        // Log finish reason
+        console.log(`[Stream] Finished with reason: ${finishReason || 'unknown'}`);
+
+        // If response was truncated due to token limit, notify the client
         if (finishReason === 'length') {
           console.warn('[Token Limit] Response was truncated due to output token limit');
+          // Send error to client so they know to continue
+          writer.write({
+            type: 'data-error',
+            data: '⚠️ Response truncated - output limit reached. Send "continue" to get more.',
+          });
         }
       },
       onFinish: async ({ responseMessage }) => {
