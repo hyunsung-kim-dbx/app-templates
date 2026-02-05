@@ -63,7 +63,37 @@ export function generateUUID(): string {
 }
 
 export function sanitizeText(text: string) {
-  return text.replace('<has_function_call>', '');
+  let result = text.replace('<has_function_call>', '');
+
+  // Fix inline markdown tables that are missing line breaks
+  // Tables look like: | col1 | col2 | followed by |---|---| followed by | val1 | val2 |
+  // When concatenated: text| | col | |---| | val |more text
+
+  // Step 1: Add newline before table start (text followed by | |)
+  // Pattern: non-pipe char followed by "| |" or "| col" (start of table)
+  result = result.replace(/([^\n|\s])(\| *\||\| *[a-zA-Z_])/g, '$1\n\n$2');
+
+  // Step 2: Add newlines between table rows
+  // Pattern: | followed by | | (row boundary) - but not |---|
+  result = result.replace(/\| *\| *\|(?!-)/g, '|\n|');
+
+  // Step 3: Add newline after separator row (|---|...|)
+  result = result.replace(/(\|[-:\s|]+\|)(?=\s*\|)/g, '$1\n');
+
+  // Step 4: Add newline after table end (| followed by non-table text)
+  // Pattern: | followed by non-pipe, non-space start of text
+  result = result.replace(/\|([^\n|\s-][^\n|]*)/g, (match, afterPipe) => {
+    // Don't break if it looks like table content (starts with space or is short)
+    if (afterPipe.match(/^[\s\d]/) || afterPipe.length < 3) {
+      return match;
+    }
+    return `|\n\n${afterPipe}`;
+  });
+
+  // Clean up excessive newlines (more than 2 consecutive)
+  result = result.replace(/\n{3,}/g, '\n\n');
+
+  return result;
 }
 
 export function convertToUIMessages(messages: DBMessage[]): ChatMessage[] {
