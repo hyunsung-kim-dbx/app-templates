@@ -14,6 +14,8 @@ export function VegaChart({ spec, className }: VegaChartProps) {
   const viewRef = useRef<any>(null);
   // Store the imperatively created vega container
   const vegaDivRef = useRef<HTMLDivElement | null>(null);
+  // Track the spec we've already rendered to avoid teardown/rebuild on same content
+  const renderedSpecRef = useRef<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -23,9 +25,24 @@ export function VegaChart({ spec, className }: VegaChartProps) {
     return `vega-chart-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }, []);
 
+  // Stabilize the spec: use JSON string as the effect dependency
+  // so new object references with identical content don't trigger re-renders
+  const specString = useMemo(() => {
+    try {
+      return JSON.stringify(spec);
+    } catch {
+      return null;
+    }
+  }, [spec]);
+
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !spec) {
+    if (!container || !specString) {
+      return;
+    }
+
+    // Skip if we've already rendered this exact spec
+    if (renderedSpecRef.current === specString && viewRef.current) {
       return;
     }
 
@@ -70,8 +87,10 @@ export function VegaChart({ spec, className }: VegaChartProps) {
           return;
         }
 
+        const parsedSpec = JSON.parse(specString);
+
         // Vega-embed renders into the imperatively created container
-        const result = await embed(vegaDiv, spec, {
+        const result = await embed(vegaDiv, parsedSpec, {
           actions: {
             export: true,
             source: false,
@@ -84,6 +103,7 @@ export function VegaChart({ spec, className }: VegaChartProps) {
 
         if (isMounted) {
           viewRef.current = result;
+          renderedSpecRef.current = specString;
           setIsLoading(false);
         } else {
           // Component unmounted during render, clean up
@@ -128,8 +148,10 @@ export function VegaChart({ spec, className }: VegaChartProps) {
         }
         vegaDivRef.current = null;
       }
+
+      renderedSpecRef.current = null;
     };
-  }, [spec]);
+  }, [specString]);
 
   // Render a minimal container - React only manages this outer div
   // Error and loading states are overlays that don't interfere with vega's DOM
