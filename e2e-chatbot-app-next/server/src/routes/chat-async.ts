@@ -666,7 +666,7 @@ async function processChat(params: {
       // Append a notice so the user knows the response was cut off
       const truncationNotice = {
         type: 'text',
-        text: '\n\n---\n\n⚠️ *Response was cut off due to output limit. You can say **"continue"** to get more, or **"summarize the above"** to get a summary.*',
+        text: '\n\n---\n\n⚠️ *출력 제한으로 응답이 중단되었습니다. **"계속"**이라고 입력하면 이어서 답변을 받을 수 있고, **"위 내용을 요약해줘"**라고 입력하면 요약을 받을 수 있습니다.*',
       };
       orderedParts.push(truncationNotice);
       addJobPart(jobId, truncationNotice);

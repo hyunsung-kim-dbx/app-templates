@@ -126,7 +126,7 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
                   id: msg.id.replace('-streaming', '-timeout'),
                   parts: [
                     ...msg.parts,
-                    { type: 'text', text: '\n\n---\n\n⚠️ *Response timed out. You can say **"continue"** to pick up where it left off, or ask a new question.*' },
+                    { type: 'text', text: '\n\n---\n\n⚠️ *응답 시간이 초과되었습니다. **"계속"**이라고 입력하면 이어서 답변을 받을 수 있고, 새로운 질문을 입력할 수도 있습니다.*' },
                   ],
                 };
                 return updated;
