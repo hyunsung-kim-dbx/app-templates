@@ -40,8 +40,10 @@ const decodeDatabricksMessageCitationLink = (link: string) =>
   link.replace('::databricks_citation', '');
 
 // Creates a markdown link to the Databricks message citation.
-export const createDatabricksMessageCitationMarkdown = (part: SourcePart) =>
-  `[${part.title || part.url}](${encodeDatabricksMessageCitationLink(part)})`;
+export const createDatabricksMessageCitationMarkdown = (part: SourcePart) => {
+  const label = part.title || part.url || 'Source';
+  return `[${label}](${encodeDatabricksMessageCitationLink(part)})`;
+};
 
 // Checks if the link is a Databricks message citation.
 const isDatabricksMessageCitationLink = (
@@ -55,6 +57,26 @@ const DatabricksMessageCitationRenderer = (
     href: string;
   }>,
 ) => {
+  const hasUrl = props.href && props.href.length > 0;
+
+  // When the endpoint returns empty URLs, render as a non-clickable badge
+  if (!hasUrl) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-default rounded-md bg-muted px-2 py-0 text-muted-foreground text-xs">
+            {props.children}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent
+          style={{ maxWidth: '300px', padding: '8px', wordWrap: 'break-word' }}
+        >
+          Source (no URL available)
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
