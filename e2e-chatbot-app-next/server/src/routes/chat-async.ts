@@ -531,9 +531,14 @@ async function processChat(params: {
         }
 
         case 'source': {
+          // In AI SDK v6 fullStream, source parts are flat:
+          // { type: 'source', sourceType: 'url', id, url, title }
+          // NOT nested under part.source
           const sourcePart = {
             type: 'source-url',
-            ...part.source,
+            sourceId: (part as any).id,
+            url: (part as any).url,
+            title: (part as any).title,
           };
           orderedParts.push(sourcePart);
           // Add source immediately so UI shows it during streaming
