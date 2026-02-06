@@ -317,10 +317,20 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
     setStatus('idle');
     setCurrentJobId(null);
 
-    // Remove the streaming placeholder message
+    // Keep streamed content but finalize the message (remove -streaming suffix)
     setMessages(prev => {
       const lastIdx = prev.length - 1;
       if (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && prev[lastIdx].id.includes('-streaming')) {
+        const streamingMsg = prev[lastIdx];
+        // If there's actual content, keep it; otherwise remove the empty placeholder
+        if (streamingMsg.parts && streamingMsg.parts.length > 0) {
+          const updated = [...prev];
+          updated[lastIdx] = {
+            ...streamingMsg,
+            id: streamingMsg.id.replace('-streaming', '-stopped'),
+          };
+          return updated;
+        }
         return prev.slice(0, lastIdx);
       }
       return prev;
