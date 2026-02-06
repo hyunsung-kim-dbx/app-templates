@@ -68,7 +68,10 @@ export const joinMessagePartSegments = (parts: ChatMessage['parts']) => {
       case 'text':
         return acc + (part.text ?? '');
       case 'source-url':
-        console.log("acc.endsWith('|')", acc.endsWith('|'));
+        // Skip citations with empty URLs - they produce broken markdown links
+        if (!part.url) {
+          return acc;
+        }
         // Special case for markdown tables
         if (acc.endsWith('|')) {
           // 1. Remove the last pipe
