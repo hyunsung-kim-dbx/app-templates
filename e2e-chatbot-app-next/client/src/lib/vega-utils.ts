@@ -5,6 +5,10 @@ interface ExtractedContent {
   vegaSpecs: VisualizationSpec[];
 }
 
+export type ContentSegment =
+  | { type: 'text'; content: string }
+  | { type: 'chart'; spec: VisualizationSpec };
+
 /**
  * Extracts Vega-Lite spec from UC function tool output format.
  * Format: {"columns":["output"],"rows":[["{...vega spec...}"]]}
@@ -160,6 +164,95 @@ export function extractVegaSpec(content: string): ExtractedContent {
   }
 
   return { text: remainingText.trim(), vegaSpecs };
+}
+
+/**
+ * Extracts Vega-Lite specs inline, returning interleaved text and chart segments.
+ * Charts appear where they were in the original text, not at the bottom.
+ */
+export function extractVegaSpecInline(content: string): ContentSegment[] {
+  // Collect all spec matches with their positions
+  const matches: Array<{ start: number; end: number; spec: VisualizationSpec }> = [];
+
+  // Find vega-lite code blocks
+  for (const match of content.matchAll(/```vega-lite\s*([\s\S]*?)\s*```/g)) {
+    try {
+      const spec = JSON.parse(match[1]);
+      if (isVegaLiteSpec(spec)) {
+        matches.push({ start: match.index!, end: match.index! + match[0].length, spec });
+      }
+    } catch { /* skip */ }
+  }
+
+  // Find json code blocks that are vega specs
+  for (const match of content.matchAll(/```json\s*([\s\S]*?)\s*```/g)) {
+    try {
+      const spec = JSON.parse(match[1]);
+      if (isVegaLiteSpec(spec) && !matches.some(m => m.start === match.index)) {
+        matches.push({ start: match.index!, end: match.index! + match[0].length, spec });
+      }
+    } catch { /* skip */ }
+  }
+
+  // If no code block matches, try raw JSON (same logic as extractVegaSpec)
+  if (matches.length === 0) {
+    for (let i = 0; i < content.length; i++) {
+      if (content[i] !== '{') continue;
+      if (matches.some(m => i >= m.start && i < m.end)) continue;
+
+      try {
+        let depth = 0;
+        let endPos = i;
+        let inString = false;
+        let escapeNext = false;
+
+        for (let j = i; j < content.length; j++) {
+          const char = content[j];
+          if (escapeNext) { escapeNext = false; continue; }
+          if (char === '\\') { escapeNext = true; continue; }
+          if (char === '"') { inString = !inString; continue; }
+          if (!inString) {
+            if (char === '{') depth++;
+            if (char === '}') { depth--; if (depth === 0) { endPos = j + 1; break; } }
+          }
+        }
+
+        if (endPos > i) {
+          const spec = JSON.parse(content.slice(i, endPos));
+          if (isVegaLiteSpec(spec)) {
+            matches.push({ start: i, end: endPos, spec });
+          }
+        }
+      } catch { /* skip */ }
+    }
+  }
+
+  if (matches.length === 0) {
+    return [{ type: 'text', content }];
+  }
+
+  // Sort by position
+  matches.sort((a, b) => a.start - b.start);
+
+  // Build interleaved segments
+  const segments: ContentSegment[] = [];
+  let cursor = 0;
+
+  for (const match of matches) {
+    const textBefore = content.slice(cursor, match.start).trim();
+    if (textBefore) {
+      segments.push({ type: 'text', content: textBefore });
+    }
+    segments.push({ type: 'chart', spec: match.spec });
+    cursor = match.end;
+  }
+
+  const textAfter = content.slice(cursor).trim();
+  if (textAfter) {
+    segments.push({ type: 'text', content: textAfter });
+  }
+
+  return segments;
 }
 
 /**

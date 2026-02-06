@@ -137,7 +137,7 @@ export function VegaChart({ spec, className }: VegaChartProps) {
     <div
       id={chartId}
       className={cn(
-        'vega-chart-container relative my-4 min-h-[300px] overflow-auto rounded-lg border bg-white p-4',
+        'vega-chart-container relative my-4 mb-6 min-h-[300px] overflow-auto rounded-lg border bg-white p-4',
         className,
       )}
     >

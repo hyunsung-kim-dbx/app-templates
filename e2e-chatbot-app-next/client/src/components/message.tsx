@@ -39,7 +39,7 @@ import { isCredentialErrorMessage } from '@/lib/oauth-error-utils';
 import { Streamdown } from 'streamdown';
 import { useApproval } from '@/hooks/use-approval';
 import { VegaChart } from './vega-chart';
-import { extractVegaSpec, extractVegaFromToolOutput } from '@/lib/vega-utils';
+import { extractVegaSpec, extractVegaSpecInline, extractVegaFromToolOutput } from '@/lib/vega-utils';
 
 const PurePreviewMessage = ({
   message,
@@ -184,11 +184,11 @@ const PurePreviewMessage = ({
               if (mode === 'view') {
                 const textContent = sanitizeText(joinMessagePartSegments(parts));
 
-                // For assistant messages, check for Vega-Lite specs
-                const { text: cleanedText, vegaSpecs } =
+                // For assistant messages, extract Vega-Lite specs inline
+                const segments =
                   message.role === 'assistant'
-                    ? extractVegaSpec(textContent)
-                    : { text: textContent, vegaSpecs: [] };
+                    ? extractVegaSpecInline(textContent)
+                    : [{ type: 'text' as const, content: textContent }];
 
                 return (
                   <div key={key}>
@@ -206,16 +206,19 @@ const PurePreviewMessage = ({
                           : undefined
                       }
                     >
-                      {message.role === 'assistant' && isLoading ? (
-                        <StreamingResponse isStreaming={isLoading}>
-                          {cleanedText}
-                        </StreamingResponse>
-                      ) : (
-                        <Response>{cleanedText}</Response>
+                      {segments.map((segment, idx) =>
+                        segment.type === 'chart' ? (
+                          <div key={`${key}-chart-${idx}`} className="mb-2">
+                            <VegaChart spec={segment.spec} />
+                          </div>
+                        ) : message.role === 'assistant' && isLoading && idx === segments.length - 1 ? (
+                          <StreamingResponse key={`${key}-text-${idx}`} isStreaming={isLoading}>
+                            {segment.content}
+                          </StreamingResponse>
+                        ) : (
+                          <Response key={`${key}-text-${idx}`}>{segment.content}</Response>
+                        ),
                       )}
-                      {vegaSpecs.map((spec, idx) => (
-                        <VegaChart key={idx} spec={spec} />
-                      ))}
                     </MessageContent>
                   </div>
                 );
