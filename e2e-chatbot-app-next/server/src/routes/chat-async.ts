@@ -663,6 +663,13 @@ async function processChat(params: {
 
     if (finishReason === 'length') {
       console.warn('[AsyncChat] Response truncated due to token limit');
+      // Append a notice so the user knows the response was cut off
+      const truncationNotice = {
+        type: 'text',
+        text: '\n\n---\n\n⚠️ *Response was cut off due to output limit. You can say **"continue"** to get more, or **"summarize the above"** to get a summary.*',
+      };
+      orderedParts.push(truncationNotice);
+      addJobPart(jobId, truncationNotice);
     }
 
   } catch (error) {

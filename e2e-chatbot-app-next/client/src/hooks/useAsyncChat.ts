@@ -112,10 +112,26 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
           const err = new Error('Request timed out. Please try again.');
           setError(err);
 
-          // Remove streaming placeholder message on timeout
+          // Keep any streamed content and append timeout notice
           setMessages(prev => {
             const lastIdx = prev.length - 1;
-            if (lastIdx >= 0 && prev[lastIdx].role === 'assistant' && prev[lastIdx].id.includes('-streaming')) {
+            if (lastIdx >= 0 && prev[lastIdx].role === 'assistant') {
+              const msg = prev[lastIdx];
+              const hasContent = msg.parts && msg.parts.length > 0;
+              if (hasContent) {
+                // Keep content, add timeout notice, finalize
+                const updated = [...prev];
+                updated[lastIdx] = {
+                  ...msg,
+                  id: msg.id.replace('-streaming', '-timeout'),
+                  parts: [
+                    ...msg.parts,
+                    { type: 'text', text: '\n\n---\n\n⚠️ *Response timed out. You can say **"continue"** to pick up where it left off, or ask a new question.*' },
+                  ],
+                };
+                return updated;
+              }
+              // Empty placeholder — remove it
               return prev.slice(0, lastIdx);
             }
             return prev;
@@ -191,11 +207,6 @@ export function useAsyncChat(options: UseAsyncChatOptions) {
         });
 
         onFinish?.(finalMessage);
-
-        // Show warning if truncated
-        if (jobStatus.finishReason === 'length') {
-          console.warn('[AsyncChat] Response was truncated');
-        }
       }
 
       // Check for error
